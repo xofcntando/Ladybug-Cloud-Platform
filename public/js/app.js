@@ -1561,25 +1561,42 @@ async function adminBots(el) {
   try {
     const { bots } = await api('/api/admin/bots');
     if (!bots.length) return (el.innerHTML = '<div class="empty">No bots on the platform yet.</div>');
+    const waLabel = { connected: ['Connected', 'on'], connecting: ['Connecting...', ''], reconnecting: ['Reconnecting', 'warn'], conflict: ['Session conflict', 'warn'], logged_out: ['Logged out', 'warn'], offline: ['Offline', ''], unknown: ['Not started', ''] };
+    const connected = bots.filter((b) => b.running && b.waState === 'connected').length;
+    const running = bots.filter((b) => b.running).length;
     el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <b>${connected} of ${bots.length} bots connected to WhatsApp</b>
+        <span style="color:var(--muted)">${running} process${running === 1 ? '' : 'es'} running</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-sm" id="botsRefresh">Refresh</button>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Bot</th><th>Owner</th><th>Status</th><th>Restarts</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Bot</th><th>Owner</th><th>WhatsApp number</th><th>Connection</th><th>Status</th><th>Restarts</th><th>Actions</th></tr></thead>
           <tbody>
-            ${bots.map((b) => `
+            ${bots.map((b) => { const wl = waLabel[b.waState] || waLabel.unknown; return `
               <tr>
                 <td><strong>${esc(b.name)}</strong><br/><span style="color:var(--muted);font-size:12px">${esc(b.sessionIdMasked)}</span></td>
                 <td>${esc(b.owner)}</td>
+                <td>${b.waNumber
+                  ? `<b>+${esc(b.waNumber)}</b>${b.waName ? `<br/><span style="color:var(--muted);font-size:12px">${esc(b.waName)}</span>` : ''}<br/>
+                     <button class="btn btn-sm btn-ghost" data-copy="+${esc(b.waNumber)}">Copy</button>
+                     <a class="btn btn-sm" href="https://wa.me/${esc(b.waNumber)}" target="_blank" rel="noopener" title="Open WhatsApp and message the bot to test it">Test</a>`
+                  : '<span class="muted-v">unknown</span>'}</td>
+                <td><span class="chip ${wl[1]}">${wl[0]}</span>${b.waSince && b.running ? `<br/><span style="color:var(--muted);font-size:12px">${timeAgo(b.waSince)}</span>` : ''}${b.lastLogAt && b.running ? `<br/><span style="color:var(--muted);font-size:12px">last log ${timeAgo(b.lastLogAt)}</span>` : ''}</td>
                 <td>${badge(b.status)}</td>
                 <td>${b.restarts || 0}</td>
                 <td>
                   ${b.running ? `<button class="btn btn-sm btn-danger" data-bstop="${b.id}">Stop</button>` : ''}
                   <button class="btn btn-sm btn-danger" data-bdel="${b.id}">Delete</button>
                 </td>
-              </tr>`).join('')}
+              </tr>`; }).join('')}
           </tbody>
         </table>
       </div>`;
+    $('#botsRefresh').onclick = () => adminBots(el);
+    $$('[data-copy]', el).forEach((b) => (b.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy); toast('Number copied'); }));
     $$('[data-bstop]').forEach((b) => (b.onclick = async () => {
       try { await api(`/api/admin/bots/${b.dataset.bstop}/stop`, { method: 'POST' }); toast('Stopped'); adminBots(el); }
       catch (e) { toast(e.message, 'err'); }

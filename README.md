@@ -53,6 +53,8 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 
 The paid features are sold like the other add-ons: users pick them on **Pay** (`#/pay?buy=envvars` / `#/pay?buy=alerts`), the admin approves the payment and the pass switches on automatically. The admin can also grant 30 days with the **+env vars** / **+alerts** / **+uptime** buttons in **Admin -> Users**. Admins always have every feature.
 
+- **Admin -> Bots: WhatsApp numbers.** Each bot row shows the WhatsApp number it is linked to (read from the session ID, then confirmed by the number the bot reports when it connects), its name, a live connection state (Connected / Connecting / Reconnecting / Session conflict / Logged out / Offline), how long ago the last log line came in, and **Copy** / **Test** buttons (Test opens `wa.me/<number>` so you can message the bot and check it answers). The top of the tab shows "X of Y bots connected". Numbers are admin-only and never returned by user-facing endpoints.
+
 ## 🗄️ MongoDB backup (keeps data on Render free)
 
 Set one environment variable and the platform backs itself up:

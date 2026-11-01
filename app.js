@@ -24,6 +24,7 @@ const mongoSync = require('./lib/mongo-sync');
 const envvars = require('./lib/envvars');
 const alerts = require('./lib/alerts');
 const uptime = require('./lib/uptime');
+const sessioninfo = require('./lib/sessioninfo');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1062,7 +1063,19 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
 app.get('/api/admin/bots', requireAdmin, (req, res) => {
   const list = db.data.bots.map((b) => {
     const owner = db.findUserById(b.userId);
-    return { ...botView(b), owner: owner ? owner.username : 'deleted' };
+    const st = bots.status(b.id);
+    const info = sessioninfo.decode(b.sessionId);
+    // the number the bot itself reported on connect wins; fall back to the one inside the session
+    const number = st.wa.number || (info && info.number) || null;
+    return {
+      ...botView(b),
+      owner: owner ? owner.username : 'deleted',
+      waNumber: number,
+      waName: info ? info.name : null,
+      waState: st.wa.state,
+      waSince: st.wa.since,
+      lastLogAt: st.lastLogAt,
+    };
   });
   res.json({ bots: list });
 });
