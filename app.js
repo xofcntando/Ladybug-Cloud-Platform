@@ -23,6 +23,7 @@ const payments = require('./lib/payments');
 const mongoSync = require('./lib/mongo-sync');
 const envvars = require('./lib/envvars');
 const alerts = require('./lib/alerts');
+const uptime = require('./lib/uptime');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -98,6 +99,7 @@ function publicUser(u) {
     extraSlotsUntil: u.extraSlotsUntil || null,
     envVarsUntil: u.envVarsUntil || null,
     alertsUntil: u.alertsUntil || null,
+    uptimeUntil: u.uptimeUntil || null,
   };
 }
 
@@ -544,7 +546,7 @@ app.delete('/api/admin/messages/:userId', requireAdmin, (req, res) => {
 // ---------------------------------------------------------------- payment submissions
 // A user reports a transfer ("I paid"); the admin approves it in one click and the
 // plan is switched on automatically, instead of hand-editing the user row.
-const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', 'envvars', 'alerts', ...billing.cfg.packs.map((p) => p.key)];
+const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', 'envvars', 'alerts', 'uptime', ...billing.cfg.packs.map((p) => p.key)];
 
 function paymentView(x) {
   const u = db.findUserById(x.userId);
@@ -568,11 +570,11 @@ function applyPurchase(u, item, qty) {
     u.autoClaimRequestedAt = null;
     return `Auto-claim for ${billing.cfg.autoClaimDays} days`;
   }
-  if (item === 'envvars' || item === 'alerts') {
-    billing.grantFeature(u, item, billing.FEATURES[item].days());
-    return item === 'envvars'
-      ? `Custom bot settings for ${billing.cfg.envDays} days`
-      : `Crash alerts for ${billing.cfg.alertsDays} days`;
+  if (billing.FEATURES[item]) {
+    const days = billing.FEATURES[item].days();
+    billing.grantFeature(u, item, days);
+    const label = { envvars: 'Custom bot settings', alerts: 'Crash alerts', uptime: 'Uptime history' }[item];
+    return `${label} for ${days} days`;
   }
   if (billing.packByKey(item)) {
     const added = billing.grantPack(u, item, qty);
@@ -778,6 +780,15 @@ function ownBot(req, res) {
   }
   return bot;
 }
+
+// Uptime history: everyone sees 24 hours, the paid pass unlocks 30 days.
+app.get('/api/bots/:id/uptime', requireAuth, (req, res) => {
+  const bot = ownBot(req, res);
+  if (!bot) return;
+  const owner = db.findUserById(bot.userId);
+  const full = billing.featureActive(owner, 'uptime');
+  res.json({ ...uptime.report(bot, full), summary: billing.featureSummary(owner, 'uptime') });
+});
 
 // Paid feature: custom environment variables per bot ("Custom bot settings").
 app.get('/api/bots/:id/env', requireAuth, (req, res) => {
@@ -1221,6 +1232,9 @@ function billingTick() {
 setInterval(billingTick, 60 * 1000).unref();
 setInterval(() => { try { referralTick(); } catch (e) { console.error('[referral]', e.message); } }, 60 * 1000).unref();
 setTimeout(billingTick, 5000).unref();
+setInterval(() => {
+  try { uptime.tick(db.listBots(), (id) => bots.status(id).running, db); } catch (e) { console.error('[uptime]', e.message); }
+}, 60 * 1000).unref();
 
 function shutdown() {
   console.log('\n[shutdown] stopping bots...');

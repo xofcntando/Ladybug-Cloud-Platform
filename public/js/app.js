@@ -913,6 +913,7 @@ function botCard(b) {
            <button class="btn" data-act="restart">Restart</button>`
         : `<button class="btn btn-primary" data-act="start">${b.status === 'starting' || b.status === 'stopping' ? '...' : 'Start bot'}</button>`}
       <button class="btn btn-ghost" data-act="logs">Logs</button>
+      <button class="btn btn-ghost" data-act="uptime" title="Uptime history">Uptime</button>
       <button class="btn btn-ghost" data-act="env" title="Custom bot settings (paid)">Settings${b.envCount ? ` (${b.envCount})` : ''}</button>
       <span class="bot-actions-spacer"></span>
       <button class="btn btn-ghost btn-icon" data-act="edit" title="Edit bot">Edit</button>
@@ -937,6 +938,7 @@ async function handleBotAction(id, act, btn) {
   if (act === 'logs') return openLogs(bot);
   if (act === 'edit') return openEditBot(bot);
   if (act === 'env') return openEnvVars(bot);
+  if (act === 'uptime') return openUptime(bot);
 
   if (act === 'delete') {
     if (!confirm(`Delete bot "${bot.name}"? This cannot be undone.`)) return;
@@ -1105,6 +1107,43 @@ function openNewBot() {
   };
 }
 
+/* ---------------------------------------------------------------- uptime history (24h free, 30 days paid) */
+function uptimeBars(items, labelFn) {
+  const color = (p) => (p == null ? 'rgba(128,128,128,.25)' : p >= 99 ? '#22c55e' : p >= 90 ? '#eab308' : '#ef4444');
+  return `<div style="display:flex;gap:3px;align-items:flex-end;height:46px">${items.map((x) =>
+    `<div title="${esc(labelFn(x))}: ${x.pct == null ? 'no data' : x.pct + '%'}" style="flex:1;border-radius:3px;background:${color(x.pct)};height:${x.pct == null ? 20 : Math.max(18, x.pct)}%"></div>`).join('')}</div>`;
+}
+
+async function openUptime(bot) {
+  let d;
+  try { d = await api(`/api/bots/${bot.id}/uptime`); } catch (e) { return toast(e.message, 'err'); }
+  const big = (v, label) => `<div style="flex:1"><div class="k">${label}</div><div style="font-size:26px;font-weight:700">${v == null ? '-' : v + '%'}</div></div>`;
+  const evIcon = { started: '&#9654;', stopped: '&#9632;', crashed: '&#9888;' };
+  const events = (d.events || []).map((e) => `<div style="display:flex;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(128,128,128,.15)">
+      <span>${evIcon[e.type] || '&bull;'}</span><b style="text-transform:capitalize">${esc(e.type)}</b>
+      <span style="color:var(--muted);flex:1">${esc(e.note || '')}</span><span style="color:var(--muted)">${timeAgo(e.t)}</span></div>`).join('') || '<p class="sub">Nothing has happened yet.</p>';
+  const hrFmt = (x) => new Date(x.t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  const dayFmt = (x) => new Date(x.t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const sm = d.summary || {};
+  const paidBlock = d.full
+    ? `<div class="k" style="margin:14px 0 6px">Last 30 days</div>${uptimeBars(d.days, dayFmt)}
+       <div style="display:flex;gap:12px;margin-top:10px">${big(d.pct7, '7 days')}${big(d.pct30, '30 days')}${big(d.crashes30d, 'Crashes (30d)').replace('%</div>', '</div>')}</div>
+       <p class="sub">Uptime history active for ${sm.daysLeft} more day${sm.daysLeft === 1 ? '' : 's'}.</p>`
+    : `<div class="alert show" style="display:block;margin-top:14px">Want the full picture? <b>30-day history</b>, 7 and 30 day uptime and the full event list are <b>$${sm.priceUsd}/month</b>. We keep recording either way, so your history will be there when you unlock it.</div>`;
+  openModal(`
+    <h3>Uptime &middot; ${esc(bot.name)}</h3>
+    <div style="display:flex;gap:12px;margin:8px 0 12px">${big(d.last24h.pct, 'Last 24 hours')}${big(d.crashes24h, 'Crashes (24h)').replace('%</div>', '</div>')}</div>
+    ${uptimeBars(d.last24h.hours, hrFmt)}
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px"><span>24h ago</span><span>now</span></div>
+    ${paidBlock}
+    <div class="k" style="margin:14px 0 6px">Recent events</div>
+    <div style="max-height:180px;overflow:auto">${events}</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Close</button>
+      ${d.full ? '' : `<a class="btn btn-primary" href="#/pay?buy=uptime" onclick="closeModal()">Unlock 30 days - $${sm.priceUsd}/month</a>`}
+    </div>`);
+}
+
 /* ---------------------------------------------------------------- custom bot settings (PAID) */
 async function openEnvVars(bot) {
   let data;
@@ -1192,6 +1231,11 @@ async function renderSettings() {
           <button class="btn btn-primary" id="alSave" ${al.active ? '' : 'disabled'}>Save</button>
           <button class="btn" id="alTest" ${al.active && al.webhook ? '' : 'disabled'}>Send test alert</button>
         </div>
+      </div>
+      <div class="card">
+        <h3>Uptime history ${passTag(bill.uptime || { active: false, priceUsd: '1' }, 'uptime')}</h3>
+        <p class="pay-note">Everyone sees the last 24 hours of each bot. The paid pass adds 30 days of history, 7 and 30 day uptime and the full event list. Open it from the <b>Uptime</b> button on a bot card.</p>
+        <a class="btn" href="#/dashboard">Go to my bots</a>
       </div>
       <div class="card">
         <h3>Custom bot settings ${passTag(ev.priceUsd != null ? ev : { active: false, priceUsd: '1' }, 'envvars')}</h3>
@@ -1478,6 +1522,7 @@ async function adminUsers(el) {
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantSlotDays":30,"grantSlots":1}' title="Grant 1 extra bot slot for 30 days">+slot</button>
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"envvars","grantFeatureDays":30}' title="Grant 30 days of Custom bot settings">+env vars</button>
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"alerts","grantFeatureDays":30}' title="Grant 30 days of Crash alerts">+alerts</button>
+                  <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"uptime","grantFeatureDays":30}' title="Grant 30 days of Uptime history">+uptime</button>
                   ${u.id !== state.user.id ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">Delete</button>` : ''}
                 </td>
               </tr>`).join('')}

@@ -49,8 +49,9 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 | **Change password** (`#/settings`) | Free | Users change their own password. All their other logged-in devices are signed out. Wrong-password attempts are rate limited. |
 | **Custom bot settings** | Paid, `$1/month` (`ENVVARS_PRICE_USD`, `ENVVARS_DAYS`) | Per-bot environment variables (e.g. `PREFIX`, `OWNER_NUMBER`) set from the **Settings** button on a bot card. Up to 20 per bot. Platform-reserved names (`SESSION_*`, `PATH`, `NODE_*`, ...) are refused. Values are only injected while the pass is active; saved values are kept if it lapses. |
 | **Crash alerts** | Paid, `$1/month` (`ALERTS_PRICE_USD`, `ALERTS_DAYS`) | A webhook (Discord, Slack or any HTTPS endpoint) is told when a bot goes down and when it has been back online for 30 seconds. Includes a **Send test alert** button. Webhooks are SSRF-guarded: HTTPS only, public addresses only, no redirects. |
+| **Uptime history** | Free 24h, paid 30 days (`$1/month`, `UPTIME_PRICE_USD`, `UPTIME_DAYS`) | The **Uptime** button on a bot card shows uptime %, a bar chart and recent starts/stops/crashes. Everyone gets the last 24 hours; the paid pass adds 30 days of history, 7/30-day uptime and the full event list. Recording runs for everyone, so history is already there when a user upgrades. Data is stored in hourly buckets (a few KB per bot) and included in the MongoDB backup. |
 
-Both paid features are sold like the other add-ons: users pick them on **Pay** (`#/pay?buy=envvars` / `#/pay?buy=alerts`), the admin approves the payment and the pass switches on automatically. The admin can also grant 30 days with the **+env vars** / **+alerts** buttons in **Admin -> Users**. Admins always have both features.
+The paid features are sold like the other add-ons: users pick them on **Pay** (`#/pay?buy=envvars` / `#/pay?buy=alerts`), the admin approves the payment and the pass switches on automatically. The admin can also grant 30 days with the **+env vars** / **+alerts** / **+uptime** buttons in **Admin -> Users**. Admins always have every feature.
 
 ## 🗄️ MongoDB backup (keeps data on Render free)
 
