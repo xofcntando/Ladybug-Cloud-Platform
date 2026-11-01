@@ -21,6 +21,8 @@ const FileSessionStore = require('./lib/session-store');
 const billing = require('./lib/billing');
 const payments = require('./lib/payments');
 const mongoSync = require('./lib/mongo-sync');
+const envvars = require('./lib/envvars');
+const alerts = require('./lib/alerts');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,9 +54,10 @@ function sessionSecret() {
   return secret;
 }
 
+const sessionStore = new FileSessionStore(path.join(DATA_DIR, 'sessions'));
 app.use(
   session({
-    store: new FileSessionStore(path.join(DATA_DIR, 'sessions')),
+    store: sessionStore,
     secret: sessionSecret(),
     resave: false,
     saveUninitialized: false,
@@ -93,6 +96,8 @@ function publicUser(u) {
     autoClaimUntil: u.autoClaimUntil || null,
     extraSlots: billing.extraSlotCount(u),
     extraSlotsUntil: u.extraSlotsUntil || null,
+    envVarsUntil: u.envVarsUntil || null,
+    alertsUntil: u.alertsUntil || null,
   };
 }
 
@@ -134,6 +139,7 @@ function botView(bot) {
     lastError: st.lastError,
     coinPaidUntil: bot.coinPaidUntil || null,
     suspendedReason: bot.suspendedReason || null,
+    envCount: bot.env ? Object.keys(bot.env).length : 0,
   };
 }
 
@@ -238,6 +244,78 @@ app.get('/api/auth/me', (req, res) => {
   if (!req.session.userId) return res.json({ user: null });
   const user = db.findUserById(req.session.userId);
   res.json({ user: user ? publicUser(user) : null });
+});
+
+// ---------------------------------------------------------------- account settings
+// FREE feature: change your own password. Other devices are signed out too.
+const pwFails = new Map(); // userId -> { n, first }
+app.post('/api/account/password', requireAuth, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  const rec = pwFails.get(req.user.id);
+  if (rec && Date.now() - rec.first > 10 * 60 * 1000) pwFails.delete(req.user.id);
+  const cur = pwFails.get(req.user.id);
+  if (cur && cur.n >= 5) {
+    return res.status(429).json({ error: 'Too many wrong attempts. Try again in a few minutes.' });
+  }
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Enter your current and new password.' });
+  if (!bcrypt.compareSync(String(currentPassword), req.user.passwordHash)) {
+    const f = pwFails.get(req.user.id) || { n: 0, first: Date.now() };
+    f.n += 1;
+    pwFails.set(req.user.id, f);
+    return res.status(401).json({ error: 'Your current password is wrong.' });
+  }
+  const np = String(newPassword);
+  if (np.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+  if (np.length > 200) return res.status(400).json({ error: 'New password is too long.' });
+  if (np === String(currentPassword)) return res.status(400).json({ error: 'Choose a password different from the current one.' });
+  pwFails.delete(req.user.id);
+  db.updateUser(req.user.id, { passwordHash: bcrypt.hashSync(np, 10) });
+  // Sign out every other device that uses this account; keep this one.
+  const signedOut = sessionStore.destroyForUser(req.user.id, req.sessionID);
+  res.json({ ok: true, signedOutOthers: signedOut });
+});
+
+// PAID feature "Crash alerts": a webhook that is told when a bot goes down / comes back.
+app.get('/api/account/alerts', requireAuth, (req, res) => {
+  res.json({ webhook: req.user.alertWebhook || '', ...billing.featureSummary(req.user, 'alerts') });
+});
+
+app.put('/api/account/alerts', requireAuth, async (req, res) => {
+  if (!billing.featureActive(req.user, 'alerts')) {
+    return res.status(402).json({
+      error: `Crash alerts is a paid feature ($${billing.cfg.alertsPriceUsd}/month). Buy it on the Pay page to unlock it.`,
+    });
+  }
+  const url = String((req.body && req.body.webhook) || '').trim();
+  if (!url) {
+    db.updateUser(req.user.id, { alertWebhook: null });
+    return res.json({ ok: true, webhook: '' });
+  }
+  try {
+    await alerts.assertSafeUrl(url);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  db.updateUser(req.user.id, { alertWebhook: url.slice(0, 500) });
+  res.json({ ok: true, webhook: url });
+});
+
+const alertTests = new Map(); // userId -> last test time
+app.post('/api/account/alerts/test', requireAuth, async (req, res) => {
+  if (!billing.featureActive(req.user, 'alerts')) {
+    return res.status(402).json({ error: 'Crash alerts is a paid feature. Buy it on the Pay page to unlock it.' });
+  }
+  if (!req.user.alertWebhook) return res.status(400).json({ error: 'Save a webhook URL first.' });
+  if (Date.now() - (alertTests.get(req.user.id) || 0) < 15000) {
+    return res.status(429).json({ error: 'Wait a few seconds between test alerts.' });
+  }
+  alertTests.set(req.user.id, Date.now());
+  try {
+    await alerts.sendTest(req.user.alertWebhook);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(502).json({ error: e.message || 'Could not reach the webhook.' });
+  }
 });
 
 // ---------------------------------------------------------------- billing / coins
@@ -466,7 +544,7 @@ app.delete('/api/admin/messages/:userId', requireAdmin, (req, res) => {
 // ---------------------------------------------------------------- payment submissions
 // A user reports a transfer ("I paid"); the admin approves it in one click and the
 // plan is switched on automatically, instead of hand-editing the user row.
-const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', ...billing.cfg.packs.map((p) => p.key)];
+const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', 'envvars', 'alerts', ...billing.cfg.packs.map((p) => p.key)];
 
 function paymentView(x) {
   const u = db.findUserById(x.userId);
@@ -489,6 +567,12 @@ function applyPurchase(u, item, qty) {
     billing.grantAutoClaim(u, billing.cfg.autoClaimDays);
     u.autoClaimRequestedAt = null;
     return `Auto-claim for ${billing.cfg.autoClaimDays} days`;
+  }
+  if (item === 'envvars' || item === 'alerts') {
+    billing.grantFeature(u, item, billing.FEATURES[item].days());
+    return item === 'envvars'
+      ? `Custom bot settings for ${billing.cfg.envDays} days`
+      : `Crash alerts for ${billing.cfg.alertsDays} days`;
   }
   if (billing.packByKey(item)) {
     const added = billing.grantPack(u, item, qty);
@@ -694,6 +778,40 @@ function ownBot(req, res) {
   }
   return bot;
 }
+
+// Paid feature: custom environment variables per bot ("Custom bot settings").
+app.get('/api/bots/:id/env', requireAuth, (req, res) => {
+  const bot = ownBot(req, res);
+  if (!bot) return;
+  const owner = db.findUserById(bot.userId);
+  res.json({
+    env: bot.env || {},
+    active: billing.featureActive(owner, 'envvars'),
+    summary: billing.featureSummary(owner, 'envvars'),
+    max: envvars.MAX_VARS,
+  });
+});
+
+app.put('/api/bots/:id/env', requireAuth, (req, res) => {
+  const bot = ownBot(req, res);
+  if (!bot) return;
+  const owner = db.findUserById(bot.userId);
+  if (!billing.featureActive(owner, 'envvars')) {
+    return res.status(402).json({
+      error: `Custom bot settings is a paid feature ($${billing.cfg.envPriceUsd}/month). Buy it on the Pay page to unlock it.`,
+    });
+  }
+  const r = envvars.sanitize(req.body && req.body.env);
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  db.updateBot(bot.id, { env: r.env });
+  const running = bots.status(bot.id).running;
+  res.json({
+    ok: true,
+    env: r.env,
+    restartNeeded: running,
+    message: running ? 'Saved. Restart the bot to apply the new settings.' : 'Saved. They apply the next time the bot starts.',
+  });
+});
 
 app.patch('/api/bots/:id', requireAuth, (req, res) => {
   const bot = ownBot(req, res);
@@ -907,6 +1025,10 @@ app.patch('/api/admin/users/:id', requireAdmin, (req, res) => {
     }
     patch.slotRequestedAt = null;
     patch.slotRequestedCount = null;
+  }
+  if (billing.FEATURES[req.body.grantFeature] && typeof req.body.grantFeatureDays === 'number') {
+    const field = billing.FEATURES[req.body.grantFeature].field;
+    patch[field] = billing.grantFeature(u, req.body.grantFeature, req.body.grantFeatureDays);
   }
   if (typeof req.body.extendTrialDays === 'number') {
     const base = u.trialEndsAt && u.trialEndsAt > Date.now() ? u.trialEndsAt : Date.now();

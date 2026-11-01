@@ -245,6 +245,7 @@ const routes = {
   '/admin': renderAdmin,
   '/pay': renderPay,
   '/support': renderSupport,
+  '/settings': renderSettings,
 };
 
 async function navigate() {
@@ -278,6 +279,7 @@ function renderNav() {
       <a href="#/dashboard" class="nav-link hide-sm">Dashboard</a>
       <a href="#/pay" class="nav-link hide-sm">Pay</a>
       <a href="#/support" class="nav-link hide-sm">Contact admin</a>
+      <a href="#/settings" class="nav-link hide-sm">Settings</a>
       <a href="#/status" class="nav-link hide-sm">Status</a>
       ${state.user.isAdmin ? '<a href="#/admin" class="nav-link hide-sm">Admin</a>' : ''}
       <span class="nav-sep hide-sm"></span>
@@ -911,6 +913,7 @@ function botCard(b) {
            <button class="btn" data-act="restart">Restart</button>`
         : `<button class="btn btn-primary" data-act="start">${b.status === 'starting' || b.status === 'stopping' ? '...' : 'Start bot'}</button>`}
       <button class="btn btn-ghost" data-act="logs">Logs</button>
+      <button class="btn btn-ghost" data-act="env" title="Custom bot settings (paid)">Settings${b.envCount ? ` (${b.envCount})` : ''}</button>
       <span class="bot-actions-spacer"></span>
       <button class="btn btn-ghost btn-icon" data-act="edit" title="Edit bot">Edit</button>
       <button class="btn btn-ghost btn-icon btn-danger" data-act="delete" title="Delete bot">Delete</button>
@@ -933,6 +936,7 @@ async function handleBotAction(id, act, btn) {
 
   if (act === 'logs') return openLogs(bot);
   if (act === 'edit') return openEditBot(bot);
+  if (act === 'env') return openEnvVars(bot);
 
   if (act === 'delete') {
     if (!confirm(`Delete bot "${bot.name}"? This cannot be undone.`)) return;
@@ -1098,6 +1102,131 @@ function openNewBot() {
       btn.disabled = false;
       btn.textContent = 'Create Bot';
     }
+  };
+}
+
+/* ---------------------------------------------------------------- custom bot settings (PAID) */
+async function openEnvVars(bot) {
+  let data;
+  try { data = await api(`/api/bots/${bot.id}/env`); } catch (e) { return toast(e.message, 'err'); }
+  const sm = data.summary || {};
+  if (!data.active) {
+    return openModal(`
+      <h3>Custom bot settings</h3>
+      <p class="sub">Set your own values for your bot, like <code>PREFIX</code> or <code>OWNER_NUMBER</code>, without touching any code. They are passed to <b>${esc(bot.name)}</b> every time it starts.</p>
+      <div class="alert show" style="display:block">This is a paid feature: <b>$${sm.priceUsd}/month</b>${bot.envCount ? ` &middot; your ${bot.envCount} saved setting(s) are kept and switch back on when you renew` : ''}.</div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Close</button>
+        <a class="btn btn-primary" href="#/pay?buy=envvars" onclick="closeModal()">Unlock for $${sm.priceUsd}/month</a>
+      </div>`);
+  }
+  const rows = Object.entries(data.env || {});
+  const rowHtml = (k, v) => `<div class="env-row" style="display:flex;gap:8px;margin-bottom:8px">
+      <input class="input env-k" placeholder="NAME" maxlength="40" value="${esc(k)}" style="flex:0 0 40%;text-transform:uppercase" />
+      <input class="input env-v" placeholder="value" maxlength="500" value="${esc(v)}" />
+      <button class="btn btn-ghost btn-danger env-del" type="button" title="Remove">&times;</button></div>`;
+  openModal(`
+    <h3>Custom bot settings</h3>
+    <p class="sub">Values passed to <b>${esc(bot.name)}</b> when it starts. Active for <b>${sm.daysLeft}</b> more day${sm.daysLeft === 1 ? '' : 's'}.</p>
+    <div class="alert alert-error" id="envErr"></div>
+    <div id="envRows">${rows.map(([k, v]) => rowHtml(k, v)).join('')}</div>
+    <button class="btn btn-sm" id="envAdd" type="button">+ Add setting</button>
+    <p class="sub" style="margin-top:10px">Names use capital letters, numbers and _. Up to ${data.max} settings. Platform names such as SESSION_ID and PATH are reserved. Restart the bot to apply changes.</p>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="envSave">Save</button>
+    </div>`);
+  const wire = () => $$('.env-del').forEach((b) => { b.onclick = () => b.closest('.env-row').remove(); });
+  wire();
+  if (!rows.length) { $('#envRows').insertAdjacentHTML('beforeend', rowHtml('', '')); wire(); }
+  $('#envAdd').onclick = () => {
+    if ($$('.env-row').length >= data.max) return toast(`Maximum ${data.max} settings`, 'err');
+    $('#envRows').insertAdjacentHTML('beforeend', rowHtml('', '')); wire();
+  };
+  $('#envSave').onclick = async () => {
+    const env = {};
+    for (const row of $$('.env-row')) {
+      const k = row.querySelector('.env-k').value.trim();
+      const v = row.querySelector('.env-v').value;
+      if (!k && !v) continue;
+      env[k] = v;
+    }
+    const btn = $('#envSave'); btn.disabled = true;
+    try {
+      const r = await api(`/api/bots/${bot.id}/env`, { method: 'PUT', body: { env } });
+      closeModal(); toast(r.message || 'Saved'); renderDashboard();
+    } catch (e) {
+      const err = $('#envErr'); err.textContent = e.message; err.className = 'alert alert-error show'; btn.disabled = false;
+    }
+  };
+}
+
+/* ---------------------------------------------------------------- settings page */
+async function renderSettings() {
+  if (!state.user) { location.hash = '#/login'; return; }
+  let al = {}, bill = {};
+  try { [al, bill] = await Promise.all([api('/api/account/alerts'), api('/api/billing')]); } catch (e) { /* show page anyway */ }
+  const ev = bill.envVars || {};
+  const passTag = (f, key) => f.active
+    ? `<span class="chip on">Active &middot; ${f.daysLeft} day${f.daysLeft === 1 ? '' : 's'} left</span> <a class="btn btn-sm" href="#/pay?buy=${key}">Renew</a>`
+    : `<span class="chip">$${f.priceUsd}/month</span> <a class="btn btn-sm btn-primary" href="#/pay?buy=${key}">Unlock</a>`;
+  $('#view').innerHTML = `
+  <div class="app"><div class="wrap">
+    <div class="app-head"><div><h1>Settings</h1><p>Signed in as <b>${esc(state.user.username)}</b></p></div></div>
+    <div class="pay-grid">
+      <div class="card">
+        <h3>Change password <span class="chip on">Free</span></h3>
+        <div class="alert alert-error" id="pwErr"></div>
+        <div class="field"><label>Current password</label><input class="input" id="pwCur" type="password" autocomplete="current-password" /></div>
+        <div class="field"><label>New password</label><input class="input" id="pwNew" type="password" autocomplete="new-password" minlength="6" /></div>
+        <div class="field"><label>Repeat new password</label><input class="input" id="pwNew2" type="password" autocomplete="new-password" /></div>
+        <button class="btn btn-primary" id="pwSave">Update password</button>
+        <p class="pay-note">Other devices signed in to your account are logged out when you change it.</p>
+      </div>
+      <div class="card">
+        <h3>Crash alerts ${passTag(al.priceUsd != null ? al : { active: false, priceUsd: '1' }, 'alerts')}</h3>
+        <p class="pay-note">Get a message when a bot goes down and when it is back online. Paste a Discord or Slack webhook URL (or any https endpoint that accepts JSON).</p>
+        <div class="alert alert-error" id="alErr"></div>
+        <div class="field"><label>Webhook URL</label><input class="input" id="alUrl" placeholder="https://discord.com/api/webhooks/..." value="${esc(al.webhook || '')}" ${al.active ? '' : 'disabled'} /></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="alSave" ${al.active ? '' : 'disabled'}>Save</button>
+          <button class="btn" id="alTest" ${al.active && al.webhook ? '' : 'disabled'}>Send test alert</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Custom bot settings ${passTag(ev.priceUsd != null ? ev : { active: false, priceUsd: '1' }, 'envvars')}</h3>
+        <p class="pay-note">Set values such as <code>PREFIX</code> or <code>OWNER_NUMBER</code> for each bot without editing code. Open it from the <b>Settings</b> button on a bot card on your dashboard.</p>
+        <a class="btn" href="#/dashboard">Go to my bots</a>
+      </div>
+    </div>
+  </div></div>`;
+
+  const showErr = (id, msg) => { const e = $(id); e.textContent = msg; e.className = 'alert alert-error show'; };
+  $('#pwSave').onclick = async () => {
+    $('#pwErr').className = 'alert alert-error';
+    if ($('#pwNew').value !== $('#pwNew2').value) return showErr('#pwErr', 'The new passwords do not match.');
+    const btn = $('#pwSave'); btn.disabled = true;
+    try {
+      const r = await api('/api/account/password', { method: 'POST', body: { currentPassword: $('#pwCur').value, newPassword: $('#pwNew').value } });
+      toast(r.signedOutOthers ? `Password updated. ${r.signedOutOthers} other device(s) logged out.` : 'Password updated.');
+      ['#pwCur', '#pwNew', '#pwNew2'].forEach((i) => { $(i).value = ''; });
+    } catch (e) { showErr('#pwErr', e.message); }
+    btn.disabled = false;
+  };
+  $('#alSave').onclick = async () => {
+    $('#alErr').className = 'alert alert-error';
+    try {
+      await api('/api/account/alerts', { method: 'PUT', body: { webhook: $('#alUrl').value.trim() } });
+      toast('Alert settings saved');
+      renderSettings();
+    } catch (e) { showErr('#alErr', e.message); }
+  };
+  $('#alTest').onclick = async () => {
+    $('#alErr').className = 'alert alert-error';
+    const btn = $('#alTest'); btn.disabled = true;
+    try { await api('/api/account/alerts/test', { method: 'POST' }); toast('Test alert sent'); }
+    catch (e) { showErr('#alErr', e.message); }
+    btn.disabled = false;
   };
 }
 
@@ -1347,6 +1476,8 @@ async function adminUsers(el) {
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantCoins":20}' title="Give 20 coins">+20 coins</button>
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantAutoClaimDays":30}' title="Grant 30 days of auto-claim">+auto-claim</button>
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantSlotDays":30,"grantSlots":1}' title="Grant 1 extra bot slot for 30 days">+slot</button>
+                  <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"envvars","grantFeatureDays":30}' title="Grant 30 days of Custom bot settings">+env vars</button>
+                  <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"alerts","grantFeatureDays":30}' title="Grant 30 days of Crash alerts">+alerts</button>
                   ${u.id !== state.user.id ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">Delete</button>` : ''}
                 </td>
               </tr>`).join('')}

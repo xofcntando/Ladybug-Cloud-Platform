@@ -42,6 +42,16 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 - **Referrals**: each user has a link `#/register?ref=<username>` on the dashboard (copy + WhatsApp share). The friend gets `REFERRAL_FRIEND_COINS` (20) bonus coins at signup; the referrer gets `REFERRAL_REFERRER_COINS` (40) once the friend's bot has been online `REFERRAL_MIN_UPTIME_MIN` (10) minutes. Cap `REFERRAL_MONTHLY_CAP` (10) rewards per referrer per 30 days. Blocked: self-referral, same-network signups, same WhatsApp session as the referrer, more than 3 welcome bonuses per IP. **Admin -> Referrals** lists everything.
 - **Bots survive restarts**: bots that were running are resumed on boot (after `BOOT_RESUME_DELAY_SEC`, default 20s, so an overlapping old instance can release the WhatsApp session first). A **watchdog** checks every minute and restarts any bot that should be running but is down (with back-off), even after auto-restart gave up. On Render a **keep-alive** ping (`RENDER_EXTERNAL_URL`, disable with `KEEP_ALIVE=false`) stops the free plan from sleeping and taking all bots offline. Set `MONGODB_URI` or all users and bots are lost on every restart.
 
+## 🆕 New: Settings, Custom bot settings & Crash alerts
+
+| Feature | Plan | What it does |
+| --- | --- | --- |
+| **Change password** (`#/settings`) | Free | Users change their own password. All their other logged-in devices are signed out. Wrong-password attempts are rate limited. |
+| **Custom bot settings** | Paid, `$1/month` (`ENVVARS_PRICE_USD`, `ENVVARS_DAYS`) | Per-bot environment variables (e.g. `PREFIX`, `OWNER_NUMBER`) set from the **Settings** button on a bot card. Up to 20 per bot. Platform-reserved names (`SESSION_*`, `PATH`, `NODE_*`, ...) are refused. Values are only injected while the pass is active; saved values are kept if it lapses. |
+| **Crash alerts** | Paid, `$1/month` (`ALERTS_PRICE_USD`, `ALERTS_DAYS`) | A webhook (Discord, Slack or any HTTPS endpoint) is told when a bot goes down and when it has been back online for 30 seconds. Includes a **Send test alert** button. Webhooks are SSRF-guarded: HTTPS only, public addresses only, no redirects. |
+
+Both paid features are sold like the other add-ons: users pick them on **Pay** (`#/pay?buy=envvars` / `#/pay?buy=alerts`), the admin approves the payment and the pass switches on automatically. The admin can also grant 30 days with the **+env vars** / **+alerts** buttons in **Admin -> Users**. Admins always have both features.
+
 ## 🗄️ MongoDB backup (keeps data on Render free)
 
 Set one environment variable and the platform backs itself up:
