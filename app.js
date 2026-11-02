@@ -25,6 +25,9 @@ const envvars = require('./lib/envvars');
 const alerts = require('./lib/alerts');
 const uptime = require('./lib/uptime');
 const sessioninfo = require('./lib/sessioninfo');
+const compression = require('compression');
+const storage = require('./lib/storage');
+const { securityHeaders, rateLimit } = require('./lib/security');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +39,9 @@ const PRO_BOT_LIMIT = parseInt(process.env.PRO_BOT_LIMIT || '10', 10);
 
 // ---------------------------------------------------------------- middleware
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use(securityHeaders);
+app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 // Login sessions never expire: they are stored on disk (survive restarts and
@@ -143,6 +149,7 @@ function botView(bot) {
     coinPaidUntil: bot.coinPaidUntil || null,
     suspendedReason: bot.suspendedReason || null,
     envCount: bot.env ? Object.keys(bot.env).length : 0,
+    resources: st.resources || null,
   };
 }
 
@@ -181,7 +188,13 @@ function botView(bot) {
 })();
 
 // ---------------------------------------------------------------- auth routes
-app.post('/api/auth/register', (req, res) => {
+// Brute-force and abuse protection (per client IP)
+const authLimiter = rateLimit({ windowMs: 10 * 60_000, max: 30, message: 'Too many sign-in attempts. Try again in a few minutes.' });
+const registerLimiter = rateLimit({ windowMs: 60 * 60_000, max: 10, message: 'Too many sign-ups from this network. Try again later.' });
+const apiLimiter = rateLimit({ windowMs: 60_000, max: 600, message: 'Too many requests. Slow down and try again shortly.' });
+app.use('/api/', apiLimiter);
+
+app.post('/api/auth/register', registerLimiter, (req, res) => {
   const { username, email, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
   if (String(username).length < 3) return res.status(400).json({ error: 'Username must be at least 3 characters' });
@@ -226,7 +239,7 @@ app.post('/api/auth/register', (req, res) => {
   res.json({ ok: true, user: publicUser(user) });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
 
@@ -1093,6 +1106,7 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
   if (u.id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own admin account' });
   for (const b of db.botsForUser(u.id)) bots.stop(b.id);
   db.deleteUser(u.id);
+  try { storage.removeAll(u.id); } catch (e) { console.error('[storage] cleanup failed:', e.message); }
   res.json({ ok: true });
 });
 
@@ -1163,8 +1177,105 @@ app.post('/api/admin/installer/deps', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+
+// ---------------------------------------------------------------- Ladybug Drive (file storage)
+const driveUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, storage.TMP),
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`),
+  }),
+  limits: { fileSize: storage.MAX_FILE_MB * 1024 * 1024, files: 20 },
+});
+const driveLimiter = rateLimit({ windowMs: 60_000, max: 120, key: (req) => req.session.userId || req.ip });
+
+function driveSummary(user) {
+  const used = storage.userUsed(user.id);
+  const quota = storage.userQuotaBytes(user);
+  const plat = storage.platform();
+  return {
+    usedBytes: used,
+    quotaBytes: Math.min(quota, plat.capacityBytes),
+    maxFileMB: storage.MAX_FILE_MB,
+    platform: user.isAdmin ? plat : { capacityBytes: plat.capacityBytes, usedBytes: plat.usedBytes, freeBytes: plat.freeBytes, limited: plat.limited, persistent: plat.persistent },
+  };
+}
+
+app.get('/api/storage', requireAuth, driveLimiter, (req, res) => {
+  try {
+    const listing = storage.list(req.user.id, req.query.path);
+    res.json({ ...listing, ...driveSummary(req.user), breakdown: storage.breakdown(req.user.id) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/storage/upload', requireAuth, driveLimiter, (req, res) => {
+  driveUpload.array('files', 20)(req, res, (err) => {
+    const files = req.files || [];
+    const discard = () => files.forEach((f) => fs.rm(f.path, { force: true }, () => {}));
+    if (err) { discard(); return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? `File too large (max ${storage.MAX_FILE_MB} MB each).` : err.message }); }
+    if (!files.length) return res.status(400).json({ error: 'No files received' });
+    const saved = [];
+    try {
+      for (const f of files) {
+        saved.push(storage.accept(req.user, req.query.path, f.path, f.originalname, f.size));
+      }
+    } catch (e) {
+      discard();
+      return res.status(400).json({ error: e.message, saved });
+    }
+    res.json({ ok: true, saved, ...driveSummary(req.user) });
+  });
+});
+
+app.post('/api/storage/folder', requireAuth, driveLimiter, (req, res) => {
+  try { storage.mkdir(req.user.id, req.body.path, req.body.name); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/storage/rename', requireAuth, driveLimiter, (req, res) => {
+  try { storage.rename(req.user.id, req.body.path, req.body.name); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete('/api/storage', requireAuth, driveLimiter, (req, res) => {
+  try { storage.remove(req.user.id, req.query.path); res.json({ ok: true, ...driveSummary(req.user) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get('/api/storage/download', requireAuth, driveLimiter, (req, res) => {
+  try {
+    const { full } = storage.resolveIn(req.user.id, req.query.path);
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return res.status(404).json({ error: 'File not found' });
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.download(full, path.basename(full));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get('/api/admin/storage', requireAdmin, (req, res) => {
+  const users = db.data.users || [];
+  res.json({
+    platform: storage.platform(),
+    userQuotaGB: storage.USER_GB,
+    maxFileMB: storage.MAX_FILE_MB,
+    users: users.map((u) => ({ id: u.id, username: u.username, usedBytes: storage.userUsed(u.id) }))
+      .filter((u) => u.usedBytes > 0).sort((a, b) => b.usedBytes - a.usedBytes).slice(0, 50),
+  });
+});
+
 // ---------------------------------------------------------------- static
-app.get('/healthz', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
+app.get('/healthz', (req, res) => {
+  const mem = process.memoryUsage();
+  const allBots = db.listBots();
+  res.json({
+    ok: true,
+    uptime: Math.round(process.uptime()),
+    node: process.version,
+    memoryMB: Math.round(mem.rss / 1048576),
+    load: os.loadavg().map((n) => Math.round(n * 100) / 100),
+    botsRunning: allBots.filter((b) => bots.status(b.id).running).length,
+    botsTotal: allBots.length,
+    botCodeInstalled: bots.botCodeInstalled(),
+  });
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -1284,6 +1395,14 @@ setTimeout(billingTick, 5000).unref();
 setInterval(() => {
   try { uptime.tick(db.listBots(), (id) => bots.status(id).running, db); } catch (e) { console.error('[uptime]', e.message); }
 }, 60 * 1000).unref();
+
+// Sample CPU/memory of running bots every 15s
+setInterval(() => { try { bots.sampleResources(); } catch (e) { console.error('[metrics]', e.message); } }, 15 * 1000).unref();
+
+// Loud warning when the built-in default admin credentials are still in use
+if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'mods') {
+  console.warn('\n[security] ADMIN_PASSWORD is not set (default "mods" in use). Set ADMIN_PASSWORD and ADMIN_USERNAME in your environment before going public.\n');
+}
 
 function shutdown() {
   console.log('\n[shutdown] stopping bots...');

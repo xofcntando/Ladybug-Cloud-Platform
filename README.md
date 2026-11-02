@@ -187,3 +187,17 @@ render.yaml          Render blueprint
 ---
 
 Made with 🐞 by **Ntandomods**.
+
+
+## 🗂️ Ladybug Drive: 1 TB storage on Render
+
+A visual file manager (`#/storage`): drag-and-drop upload with progress, folders, rename, download, delete, a colour-coded usage bar per file type and a platform capacity card.
+
+- **Capacity:** `STORAGE_TOTAL_GB` (default `1024` = 1 TB) for the whole platform, `STORAGE_USER_GB` (default `5`) per user, `STORAGE_MAX_FILE_MB` (default `2048`) per file. Capacity shown is always clamped to the real disk size, so the UI never promises space that does not exist.
+- **Where files live:** `STORAGE_DIR` (default `$DATA_DIR/storage`). Each user is jailed to their own folder (path traversal is blocked) and files are deleted with the account.
+- **Deploy with 1 TB on Render:** use `render.storage.yaml` (Starter plan + `sizeGB: 1024` disk mounted at `/var/data`). Persistent disks cost about $0.25/GB/month on Render, so ~$256/month for 1 TB plus the instance. Render does not publish a maximum disk size: if 1024 is rejected, lower `sizeGB` or contact Render support. Disks can grow but not shrink.
+- The free plan has no persistent disk, so files there are lost on redeploy. Use the storage blueprint for anything real.
+
+## 🛡️ Service hardening
+
+Security headers on every response, gzip compression, per-IP rate limits (sign-in, sign-up, API, drive), live per-bot memory/CPU on the dashboard, and a richer `/healthz` (memory, load, bots running). Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` yourself - the server warns at boot if the old default is still in use.

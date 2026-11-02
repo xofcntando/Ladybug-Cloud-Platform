@@ -1,0 +1,60 @@
+# Ladybug Cloud with 1 TB of persistent storage on Render.
+#
+# Deploy: Render Dashboard -> New -> Blueprint -> pick this repo -> set
+# "Blueprint file path" to render.storage.yaml.
+#
+# Cost (check https://render.com/pricing): persistent disks are billed per GB per
+# month (about $0.25/GB), so 1024 GB is roughly $256/month on top of the Starter
+# instance. Disks need a paid instance, and a service with a disk runs as a
+# single instance. Render's docs do not publish a maximum disk size - if the
+# deploy rejects 1024, lower sizeGB (the app adapts: the Storage page always
+# shows the real disk capacity) or ask Render Support to raise the limit.
+# A disk can be grown later but never shrunk, so you can also start at 100 and grow.
+services:
+  - type: web
+    name: ladybug-cloud
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install && npm --prefix bots/ladybug install --omit=dev --no-audit --no-fund
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: ladybug-data
+      mountPath: /var/data
+      sizeGB: 1024
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NPM_CONFIG_DANGEROUSLY_ALLOW_ALL_SCRIPTS
+        value: "true"
+      - key: PUPPETEER_SKIP_DOWNLOAD
+        value: "true"
+      # Set these in the Render dashboard when the Blueprint is created.
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: FREE_BOT_LIMIT
+        value: "1"
+      - key: PRO_BOT_LIMIT
+        value: "10"
+      # Everything persistent lives on the disk
+      - key: DATA_DIR
+        value: /var/data
+      - key: BOT_DIR
+        value: /var/data/bots/ladybug
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      # Ladybug Drive: platform capacity, per-user quota, largest single upload
+      - key: STORAGE_TOTAL_GB
+        value: "1024"
+      - key: STORAGE_USER_GB
+        value: "5"
+      - key: STORAGE_MAX_FILE_MB
+        value: "2048"
