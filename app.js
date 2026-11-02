@@ -905,6 +905,42 @@ app.get('/api/bots/:id/logs', requireAuth, (req, res) => {
   res.json({ logs: bots.logs(bot.id, parseInt(req.query.limit || '200', 10)), status: bots.status(bot.id) });
 });
 
+// Free feature: download the bot's full log buffer as a plain-text file.
+// Secrets (session IDs, custom env var values) are scrubbed before sending.
+app.get('/api/bots/:id/logs/download', requireAuth, (req, res) => {
+  const bot = ownBot(req, res);
+  if (!bot) return;
+  const secrets = [bot.sessionId, ...Object.values(bot.env || {})]
+    .map((v) => String(v || ''))
+    .filter((v) => v.length >= 6);
+  const scrub = (line) => {
+    let out = String(line).replace(/Ladybug![A-Za-z0-9+/=_-]{8,}/g, 'Ladybug![hidden]');
+    for (const sec of secrets) out = out.split(sec).join('[hidden]');
+    return out;
+  };
+  const entries = bots.logs(bot.id, 100000);
+  const st = bots.status(bot.id);
+  const header = [
+    `Ladybug Cloud - logs for "${bot.name}"`,
+    `Exported: ${new Date().toISOString()}`,
+    `Status: ${st && st.status ? st.status : 'unknown'}`,
+    `Lines: ${entries.length} (the last 600 lines are kept per bot)`,
+    '='.repeat(60),
+    '',
+  ];
+  const body = entries.map(
+    (l) => `[${new Date(l.t).toISOString()}] ${l.stream === 'stderr' ? 'ERR' : 'OUT'} ${scrub(l.line)}`
+  );
+  const safeName = String(bot.name || 'bot').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 40) || 'bot';
+  const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+  res.set({
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${safeName}-logs-${stamp}.txt"`,
+    'Cache-Control': 'no-store',
+  });
+  res.send(header.concat(body).join('\n') + '\n');
+});
+
 app.delete('/api/bots/:id/logs', requireAuth, (req, res) => {
   const bot = ownBot(req, res);
   if (!bot) return;

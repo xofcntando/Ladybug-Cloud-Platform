@@ -1321,6 +1321,7 @@ function openLogs(bot) {
     <p class="sub">Streaming console output from your bot process.</p>
     <div class="console" id="console"><div class="ln out">Loading...</div></div>
     <div class="modal-actions">
+      <a class="btn btn-sm" id="dlLogs" href="/api/bots/${bot.id}/logs/download" download>&#11015; Download .txt</a>
       <button class="btn btn-sm" id="clearLogs">Clear</button>
       <button class="btn" onclick="closeModal()">Close</button>
     </div>`);

@@ -16,7 +16,7 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 | **📊 Public status page** | `/status` shows live platform health, running bots, uptime and per-bot status (session IDs never exposed) |
 | **Isolation** | One `node index.js` process per bot, separate `session_<botId>` folder, separate temp dir |
 | **Control** | Start / stop / restart, auto-restart with backoff (5 attempts), live status badges |
-| **Logs** | 600-line ring buffer per bot, streamed to a live console in the dashboard |
+| **Logs** | 600-line ring buffer per bot, streamed to a live console in the dashboard, with a free **Download .txt** button (timestamps added, session IDs and custom setting values scrubbed) |
 | **Admin panel** | Stats, user management (plan/limit/ban/delete), all bots, one-click installer |
 | **Installer** | Install Ladybug Mini from GitHub, upload a ZIP, or re-run `npm install` for the bot |
 | **Free tier limit** | 1 bot per free user, 10 for pro, unlimited for admin — all configurable |
@@ -171,7 +171,7 @@ render.yaml          Render blueprint
 ## 🔌 API overview
 
 **Auth** `POST /api/auth/register|login|logout`, `GET /api/auth/me`
-**Bots** `GET|POST /api/bots`, `PATCH|DELETE /api/bots/:id`, `POST /api/bots/:id/start|stop|restart`, `GET|DELETE /api/bots/:id/logs`
+**Bots** `GET|POST /api/bots`, `PATCH|DELETE /api/bots/:id`, `POST /api/bots/:id/start|stop|restart`, `GET|DELETE /api/bots/:id/logs`, `GET /api/bots/:id/logs/download`
 **Sessions** `POST /api/session/pair` (body `{phone}`), `GET|DELETE /api/session/pair/:id`
 **Public** `GET /api/status`, `GET /healthz`
 **Admin** `GET /api/admin/stats|users|bots|installer`, `PATCH|DELETE /api/admin/users/:id`, `DELETE /api/admin/bots/:id`, `POST /api/admin/installer/github|upload|deps`
