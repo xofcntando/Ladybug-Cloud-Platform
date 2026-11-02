@@ -2147,7 +2147,7 @@ async function renderStorage() {
         <div class="drive-plat-k">Platform capacity</div>
         <div class="drive-plat-v">${fmtBytes(P.capacityBytes)}</div>
         <div class="meter ${platPct > 90 ? 'warn' : 'ok'}"><span style="width:${Math.max(1, platPct)}%"></span></div>
-        <div class="drive-plat-s">${fmtBytes(P.usedBytes)} used across all accounts${P.limited ? ' &middot; limited by the disk attached to this server' : ''}</div>
+        <div class="drive-plat-s">${fmtBytes(P.usedBytes)} used across all accounts${P.backend === 'mongodb' ? ' &middot; saved in MongoDB, survives restarts' : P.limited ? ' &middot; limited by the disk attached to this server' : ''}</div>
       </div>
     </div>
 

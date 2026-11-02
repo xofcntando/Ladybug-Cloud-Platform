@@ -201,3 +201,7 @@ A visual file manager (`#/storage`): drag-and-drop upload with progress, folders
 ## 🛡️ Service hardening
 
 Security headers on every response, gzip compression, per-IP rate limits (sign-in, sign-up, API, drive), live per-bot memory/CPU on the dashboard, and a richer `/healthz` (memory, load, bots running). Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` yourself - the server warns at boot if the old default is still in use.
+
+### Drive on the free plan (MongoDB persistence)
+
+With `MONGODB_URI` set and no persistent disk, Drive writes every upload, folder, rename and delete through to MongoDB (GridFS) and rebuilds the files on boot, so they survive Render redeploys and sleep. Defaults in this mode: 350 MB platform, 50 MB per user, 25 MB per file, because a free Atlas cluster is 512 MB in total and also holds your users, bots and logins. Without MongoDB the Storage page warns that files are temporary. With a real disk (`render.storage.yaml`) MongoDB is not used for files.

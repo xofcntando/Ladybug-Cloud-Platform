@@ -37,11 +37,10 @@ services:
       # filesystem and resets on redeploy/sleep. To keep users + sessions
       # permanently, upgrade to plan: starter and uncomment the disk block
       # below, then set DATA_DIR=/var/data and BOT_DIR=/var/data/bots/ladybug.
-      # Free plan = temporary disk. Keep Drive small and warn users it is not permanent.
-      - key: STORAGE_TOTAL_GB
-        value: "2"
-      - key: STORAGE_USER_GB
-        value: "0.25"
+      # Drive on the free plan is saved in MongoDB (MONGODB_URI) so files survive restarts.
+      # Defaults: 350 MB total, 50 MB per user, 25 MB per file (a free Atlas cluster holds
+      # 512 MB shared with everything else). Override with STORAGE_TOTAL_GB / STORAGE_USER_GB /
+      # STORAGE_MAX_FILE_MB if you use a bigger cluster.
       - key: DATA_DIR
         value: /opt/render/project/src/data
       - key: BOT_DIR

@@ -1106,7 +1106,7 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
   if (u.id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own admin account' });
   for (const b of db.botsForUser(u.id)) bots.stop(b.id);
   db.deleteUser(u.id);
-  try { storage.removeAll(u.id); } catch (e) { console.error('[storage] cleanup failed:', e.message); }
+  storage.removeAll(u.id).catch((e) => console.error('[storage] cleanup failed:', e.message));
   res.json({ ok: true });
 });
 
@@ -1196,7 +1196,7 @@ function driveSummary(user) {
     usedBytes: used,
     quotaBytes: Math.min(quota, plat.capacityBytes),
     maxFileMB: storage.MAX_FILE_MB,
-    platform: user.isAdmin ? plat : { capacityBytes: plat.capacityBytes, usedBytes: plat.usedBytes, freeBytes: plat.freeBytes, limited: plat.limited, persistent: plat.persistent },
+    platform: user.isAdmin ? plat : { capacityBytes: plat.capacityBytes, usedBytes: plat.usedBytes, freeBytes: plat.freeBytes, limited: plat.limited, persistent: plat.persistent, backend: plat.backend },
   };
 }
 
@@ -1208,7 +1208,7 @@ app.get('/api/storage', requireAuth, driveLimiter, (req, res) => {
 });
 
 app.post('/api/storage/upload', requireAuth, driveLimiter, (req, res) => {
-  driveUpload.array('files', 20)(req, res, (err) => {
+  driveUpload.array('files', 20)(req, res, async (err) => {
     const files = req.files || [];
     const discard = () => files.forEach((f) => fs.rm(f.path, { force: true }, () => {}));
     if (err) { discard(); return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? `File too large (max ${storage.MAX_FILE_MB} MB each).` : err.message }); }
@@ -1216,7 +1216,7 @@ app.post('/api/storage/upload', requireAuth, driveLimiter, (req, res) => {
     const saved = [];
     try {
       for (const f of files) {
-        saved.push(storage.accept(req.user, req.query.path, f.path, f.originalname, f.size));
+        saved.push(await storage.accept(req.user, req.query.path, f.path, f.originalname, f.size));
       }
     } catch (e) {
       discard();
@@ -1226,18 +1226,18 @@ app.post('/api/storage/upload', requireAuth, driveLimiter, (req, res) => {
   });
 });
 
-app.post('/api/storage/folder', requireAuth, driveLimiter, (req, res) => {
-  try { storage.mkdir(req.user.id, req.body.path, req.body.name); res.json({ ok: true }); }
+app.post('/api/storage/folder', requireAuth, driveLimiter, async (req, res) => {
+  try { await storage.mkdir(req.user.id, req.body.path, req.body.name); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.post('/api/storage/rename', requireAuth, driveLimiter, (req, res) => {
-  try { storage.rename(req.user.id, req.body.path, req.body.name); res.json({ ok: true }); }
+app.post('/api/storage/rename', requireAuth, driveLimiter, async (req, res) => {
+  try { await storage.rename(req.user.id, req.body.path, req.body.name); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-app.delete('/api/storage', requireAuth, driveLimiter, (req, res) => {
-  try { storage.remove(req.user.id, req.query.path); res.json({ ok: true, ...driveSummary(req.user) }); }
+app.delete('/api/storage', requireAuth, driveLimiter, async (req, res) => {
+  try { await storage.remove(req.user.id, req.query.path); res.json({ ok: true, ...driveSummary(req.user) }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 

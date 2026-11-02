@@ -8,4 +8,6 @@ const mongoSync = require('./lib/mongo-sync');
 mongoSync
   .restore()
   .catch((e) => console.error('[mongo] restore error:', e.message))
+  .then(() => require('./lib/drive-mongo').restoreAll(require('./lib/storage').ROOT))
+  .catch((e) => console.error('[drive] restore error:', e.message))
   .then(() => require('./app'));
