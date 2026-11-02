@@ -246,6 +246,7 @@ const routes = {
   '/pay': renderPay,
   '/support': renderSupport,
   '/settings': renderSettings,
+  '/storage': renderStorage,
 };
 
 async function navigate() {
@@ -277,6 +278,7 @@ function renderNav() {
     const coins = state.billing ? (state.billing.totalCoins != null ? state.billing.totalCoins : state.billing.coins) : state.user.coins || 0;
     el.innerHTML = `
       <a href="#/dashboard" class="nav-link hide-sm">Dashboard</a>
+      <a href="#/storage" class="nav-link hide-sm">Storage</a>
       <a href="#/pay" class="nav-link hide-sm">Pay</a>
       <a href="#/support" class="nav-link hide-sm">Contact admin</a>
       <a href="#/settings" class="nav-link hide-sm">Settings</a>
@@ -411,7 +413,7 @@ async function renderLanding() {
           <p>Control your bot account &mdash; status, privacy, branding &amp; broadcasts.</p>
           <div class="chips"><span>.autostatus</span><span>.savestatus</span><span>.autoread</span><span>.antidelete</span><span>.setprefix</span><span>.broadcast</span><span class="more">+8 more</span></div>
         </article>
-        <article class="cmd-card reveal" data-accent="red">
+        <article class="cmd-card reveal" data-accent="sky">
           <div class="cmd-top"><div class="cmd-icon">&#128737;</div><span class="cmd-count">14+ cmds</span></div>
           <h3>Admin</h3>
           <p>Keep groups clean &mdash; anti-spam, links, bots, tags &amp; welcome flows.</p>
@@ -538,6 +540,35 @@ async function renderLanding() {
     </div>
   </section>
 
+  <section class="section" id="platform">
+    <div class="wrap">
+      <div class="section-title center reveal">
+        <span class="kicker">Why Ladybug Cloud</span>
+        <h2>Hosting that does the boring parts for you</h2>
+        <p>Compare it with running a bot on your phone, a laptop, or a random free host.</p>
+      </div>
+      <div class="compare reveal" role="table" aria-label="Ladybug Cloud compared with other ways to host a bot">
+        <div class="compare-row compare-head" role="row">
+          <span role="columnheader"></span>
+          <span role="columnheader" class="us">Ladybug Cloud</span>
+          <span role="columnheader">Your phone or PC</span>
+          <span role="columnheader">Free hosts</span>
+        </div>
+        <div class="compare-row" role="row"><span role="rowheader">Stays online 24/7</span><span class="us yes">Yes</span><span class="no">Only while it is on</span><span class="mid">Sleeps or limits hours</span></div>
+        <div class="compare-row" role="row"><span role="rowheader">Restarts after a crash</span><span class="us yes">Automatic, with a watchdog</span><span class="no">You restart it</span><span class="mid">Sometimes</span></div>
+        <div class="compare-row" role="row"><span role="rowheader">Survives server restarts</span><span class="us yes">Bots resume on boot</span><span class="no">No</span><span class="no">Often loses data</span></div>
+        <div class="compare-row" role="row"><span role="rowheader">Live memory and CPU</span><span class="us yes">On every bot card</span><span class="no">Check it yourself</span><span class="no">No</span></div>
+        <div class="compare-row" role="row"><span role="rowheader">Uptime history and crash alerts</span><span class="us yes">Built in</span><span class="no">No</span><span class="no">No</span></div>
+        <div class="compare-row" role="row"><span role="rowheader">Setup</span><span class="us yes">About 2 minutes, in the browser</span><span class="mid">Install Node and a terminal</span><span class="mid">Deploy, configure, debug</span></div>
+        <div class="compare-row" role="row"><span role="rowheader">Cost</span><span class="us yes">Free trial, then coins or $3/month</span><span class="mid">Your data and battery</span><span class="mid">Free, with limits</span></div>
+      </div>
+      <div class="live-strip reveal" id="liveStrip" aria-live="polite">
+        <span class="fs-dot"></span><b id="liveState">Checking platform...</b>
+        <span id="liveBots"></span><span id="liveUp"></span>
+      </div>
+    </div>
+  </section>
+
   <section class="section" id="pricing">
     <div class="wrap">
       <div class="section-title center reveal">
@@ -643,6 +674,15 @@ function initLanding() {
   api('/api/prices').then((p) => {
     $$('[data-zig]').forEach((el) => { el.textContent = `or ${zigFmt(parseFloat(el.dataset.zig), p.zigPerUsd)}${el.hasAttribute('data-zig-suffix') ? ' for 100 coins' : ' per month'}`; });
   }).catch(() => {});
+  // live platform strip
+  api('/api/status').then((st) => {
+    const ok = st.installed !== false;
+    if ($('#liveState')) {
+      $('#liveState').textContent = ok ? 'All systems operational' : 'Bot code not installed yet';
+      $('#liveBots').textContent = `${st.stats.running} of ${st.stats.bots} bots running`;
+      $('#liveUp').textContent = `Platform up ${fmtUptime(st.uptime)}`;
+    }
+  }).catch(() => { if ($('#liveState')) $('#liveState').textContent = 'Status unavailable'; });
   // scroll reveal
   const items = $$('.reveal');
   if (!('IntersectionObserver' in window)) {
@@ -904,6 +944,11 @@ function botCard(b) {
       <span class="chip ${b.restarts ? 'warn' : ''}">${b.restarts || 0} restart${b.restarts === 1 ? '' : 's'}</span>
       ${b.pid && live ? `<span class="chip">PID ${b.pid}</span>` : ''}
     </div>
+    ${live && b.resources ? `<div class="bot-res" title="Live resource usage of this bot">
+      <div><span>Memory</span><b>${b.resources.memMB.toFixed(0)} MB</b></div>
+      <div><span>CPU</span><b>${b.resources.cpu.toFixed(1)}%</b></div>
+      <div><span>Threads</span><b>${b.resources.threads || '-'}</b></div>
+    </div>` : ''}
     ${cover}
     ${b.suspendedReason && !b.running ? `<div class="suspended">${esc(b.suspendedReason)}${/coins/i.test(b.suspendedReason) ? ' <a class="buy-link" href="#/pay?buy=coins100">Buy coins</a>' : ''}</div>` : ''}
     ${b.lastError ? `<div class="suspended is-err">${esc(b.lastError)}</div>` : ''}
@@ -2019,4 +2064,150 @@ async function adminReferrals(el) {
   } catch (e) {
     el.innerHTML = `<div class="alert alert-error show">${esc(e.message)}</div>`;
   }
+}
+
+
+/* ---------------------------------------------------------------- Ladybug Drive (storage) */
+function fmtBytes(n) {
+  if (n == null) return '-';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0, v = Number(n);
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(v >= 10 ? 1 : 2)} ${u[i]}`;
+}
+
+const FILE_KINDS = {
+  images: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'],
+  video: ['mp4', 'mkv', 'mov', 'webm', 'avi'],
+  audio: ['mp3', 'wav', 'ogg', 'm4a', 'opus', 'flac'],
+  archives: ['zip', 'rar', '7z', 'tar', 'gz'],
+  documents: ['pdf', 'doc', 'docx', 'txt', 'md', 'csv', 'xlsx', 'json'],
+};
+function fileKind(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  return Object.keys(FILE_KINDS).find((k) => FILE_KINDS[k].includes(ext)) || 'other';
+}
+const KIND_LABEL = { images: 'Images', video: 'Video', audio: 'Audio', documents: 'Documents', archives: 'Archives', other: 'Other' };
+
+async function renderStorage() {
+  if (!state.user) { location.hash = '#/login'; return; }
+  const q = /[?&]p=([^&]*)/.exec(location.hash);
+  let cwd = q ? decodeURIComponent(q[1]) : '';
+  $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="app-head"><div><h1>Storage</h1><p>Loading your drive...</p></div></div></div></div>`;
+  let d;
+  try { d = await api('/api/storage?path=' + encodeURIComponent(cwd)); }
+  catch (e) { toast(e.message, 'err'); location.hash = '#/storage'; return; }
+
+  const pct = (a, b) => (b ? Math.min(100, (a / b) * 100) : 0);
+  const free = Math.max(0, d.quotaBytes - d.usedBytes);
+  const order = ['images', 'video', 'audio', 'documents', 'archives', 'other'];
+  const segs = order.filter((k) => d.breakdown[k] > 0).map((k) => `<i class="seg seg-${k}" style="width:${pct(d.breakdown[k], d.quotaBytes)}%" title="${KIND_LABEL[k]}: ${fmtBytes(d.breakdown[k])}"></i>`).join('');
+  const legend = order.map((k) => `<span class="lg"><i class="seg-${k}"></i>${KIND_LABEL[k]} <b>${fmtBytes(d.breakdown[k])}</b></span>`).join('');
+  const crumbs = ['<a href="#/storage">My drive</a>'];
+  const parts = cwd ? cwd.split('/') : [];
+  parts.forEach((part, i) => crumbs.push(`<a href="#/storage?p=${encodeURIComponent(parts.slice(0, i + 1).join('/'))}">${esc(part)}</a>`));
+  const P = d.platform || {};
+  const platPct = pct(P.usedBytes, P.capacityBytes);
+
+  const rows = d.items.length ? d.items.map((it) => {
+    const rel = (cwd ? cwd + '/' : '') + it.name;
+    const kind = it.dir ? 'folder' : fileKind(it.name);
+    return `<div class="drive-row" data-path="${esc(rel)}" data-dir="${it.dir ? 1 : 0}">
+      <span class="drive-ic k-${kind}" aria-hidden="true">${it.dir ? '&#128193;' : { images: '&#128444;', video: '&#127910;', audio: '&#127925;', archives: '&#128230;', documents: '&#128196;', other: '&#128459;' }[kind]}</span>
+      <span class="drive-name">${it.dir ? `<a href="#/storage?p=${encodeURIComponent(rel)}">${esc(it.name)}</a>` : esc(it.name)}</span>
+      <span class="drive-size">${it.dir ? '' : fmtBytes(it.size)}</span>
+      <span class="drive-mod">${new Date(it.modified).toLocaleDateString()}</span>
+      <span class="drive-act">
+        ${it.dir ? '' : '<button class="btn btn-sm btn-ghost" data-do="dl">Download</button>'}
+        <button class="btn btn-sm btn-ghost" data-do="rn">Rename</button>
+        <button class="btn btn-sm btn-ghost btn-danger" data-do="rm">Delete</button>
+      </span>
+    </div>`;
+  }).join('') : `<div class="drive-empty"><b>This folder is empty</b><span>Drop files here or press Upload to add your first one.</span></div>`;
+
+  $('#view').innerHTML = `
+  <div class="app"><div class="wrap">
+    <div class="app-head">
+      <div><h1>Storage</h1><p>Files for your bots - media, backups and assets. Private to your account.</p></div>
+      <div class="app-head-actions">
+        <button class="btn" id="newFolder">New folder</button>
+        <button class="btn btn-primary" id="uploadBtn">Upload files</button>
+        <input type="file" id="fileIn" multiple hidden />
+      </div>
+    </div>
+
+    <div class="drive-top">
+      <div class="card drive-meter">
+        <div class="drive-meter-head"><div><span class="drive-big">${fmtBytes(d.usedBytes)}</span><span class="drive-of"> of ${fmtBytes(d.quotaBytes)} used</span></div><span class="chip">${fmtBytes(free)} free</span></div>
+        <div class="stackbar" role="img" aria-label="Storage used by file type">${segs}</div>
+        <div class="drive-legend">${legend}</div>
+      </div>
+      <div class="card drive-plat">
+        <div class="drive-plat-k">Platform capacity</div>
+        <div class="drive-plat-v">${fmtBytes(P.capacityBytes)}</div>
+        <div class="meter ${platPct > 90 ? 'warn' : 'ok'}"><span style="width:${Math.max(1, platPct)}%"></span></div>
+        <div class="drive-plat-s">${fmtBytes(P.usedBytes)} used across all accounts${P.limited ? ' &middot; limited by the disk attached to this server' : ''}</div>
+      </div>
+    </div>
+
+    <div class="card drive-box" id="driveBox">
+      <div class="drive-crumbs">${crumbs.join('<span>/</span>')}</div>
+      <div class="drive-head"><span></span><span>Name</span><span>Size</span><span>Modified</span><span></span></div>
+      <div class="drive-list">${rows}</div>
+      <div class="drive-drop" id="dropHint">Drop files to upload (up to ${fmtBytes(d.maxFileMB * 1048576)} each)</div>
+      <div class="drive-prog" id="driveProg" hidden><div class="meter ok"><span style="width:0%"></span></div><small></small></div>
+    </div>
+  </div></div>`;
+
+  const here = '?path=' + encodeURIComponent(cwd);
+  const upload = (files) => {
+    if (!files.length) return;
+    const fd = new FormData();
+    files.forEach((f) => fd.append('files', f));
+    const prog = $('#driveProg'); prog.hidden = false;
+    const bar = $('span', prog), label = $('small', prog);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/storage/upload' + here);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) { bar.style.width = (e.loaded / e.total * 100) + '%'; label.textContent = `Uploading ${files.length} file${files.length > 1 ? 's' : ''} - ${fmtBytes(e.loaded)} of ${fmtBytes(e.total)}`; } };
+    xhr.onload = () => {
+      let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) { /* ignore */ }
+      if (xhr.status >= 200 && xhr.status < 300) toast(`Uploaded ${r.saved.length} file${r.saved.length > 1 ? 's' : ''}`);
+      else toast(r.error || 'Upload failed', 'err');
+      renderStorage();
+    };
+    xhr.onerror = () => { toast('Upload failed - check your connection', 'err'); prog.hidden = true; };
+    xhr.send(fd);
+  };
+  $('#uploadBtn').onclick = () => $('#fileIn').click();
+  $('#fileIn').onchange = (e) => upload(Array.from(e.target.files));
+  const box = $('#driveBox');
+  ['dragenter', 'dragover'].forEach((ev) => box.addEventListener(ev, (e) => { e.preventDefault(); box.classList.add('dragging'); }));
+  ['dragleave', 'drop'].forEach((ev) => box.addEventListener(ev, (e) => { e.preventDefault(); box.classList.remove('dragging'); }));
+  box.addEventListener('drop', (e) => upload(Array.from(e.dataTransfer.files)));
+
+  $('#newFolder').onclick = async () => {
+    const name = prompt('Folder name');
+    if (!name) return;
+    try { await api('/api/storage/folder', { method: 'POST', body: { path: cwd, name } }); renderStorage(); } catch (e) { toast(e.message, 'err'); }
+  };
+  $$('.drive-row [data-do]').forEach((btn) => {
+    btn.onclick = async () => {
+      const row = btn.closest('.drive-row'); const rel = row.dataset.path; const act = btn.dataset.do;
+      try {
+        if (act === 'dl') { location.href = '/api/storage/download?path=' + encodeURIComponent(rel); return; }
+        if (act === 'rn') {
+          const cur = rel.split('/').pop();
+          const name = prompt('New name', cur);
+          if (!name || name === cur) return;
+          await api('/api/storage/rename', { method: 'POST', body: { path: rel, name } });
+        }
+        if (act === 'rm') {
+          if (!confirm(`Delete "${rel.split('/').pop()}"? This cannot be undone.`)) return;
+          await api('/api/storage?path=' + encodeURIComponent(rel), { method: 'DELETE' });
+          toast('Deleted');
+        }
+        renderStorage();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+  });
 }
