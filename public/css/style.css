@@ -928,3 +928,5 @@ body[data-page]:not([data-page="/"]):not([data-page="/pricing"])::before{
 .live-strip b{color:var(--text)}
 .live-strip .fs-dot{flex:none}
 @media(max-width:760px){.compare-row{grid-template-columns:1fr 1fr;gap:6px 12px}.compare-head span:nth-child(n+3){display:none}.compare-row>span:nth-child(n+3){grid-column:span 1}}
+
+.drive-warn{margin-bottom:16px;background:var(--warn-soft);border:1px solid rgba(240,180,58,.4);color:#ffd88a;border-radius:var(--r-md);padding:12px 16px;font-size:14px}

@@ -37,6 +37,11 @@ services:
       # filesystem and resets on redeploy/sleep. To keep users + sessions
       # permanently, upgrade to plan: starter and uncomment the disk block
       # below, then set DATA_DIR=/var/data and BOT_DIR=/var/data/bots/ladybug.
+      # Free plan = temporary disk. Keep Drive small and warn users it is not permanent.
+      - key: STORAGE_TOTAL_GB
+        value: "2"
+      - key: STORAGE_USER_GB
+        value: "0.25"
       - key: DATA_DIR
         value: /opt/render/project/src/data
       - key: BOT_DIR

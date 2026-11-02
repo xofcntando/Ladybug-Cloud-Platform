@@ -1196,7 +1196,7 @@ function driveSummary(user) {
     usedBytes: used,
     quotaBytes: Math.min(quota, plat.capacityBytes),
     maxFileMB: storage.MAX_FILE_MB,
-    platform: user.isAdmin ? plat : { capacityBytes: plat.capacityBytes, usedBytes: plat.usedBytes, freeBytes: plat.freeBytes, limited: plat.limited },
+    platform: user.isAdmin ? plat : { capacityBytes: plat.capacityBytes, usedBytes: plat.usedBytes, freeBytes: plat.freeBytes, limited: plat.limited, persistent: plat.persistent },
   };
 }
 

@@ -2136,6 +2136,7 @@ async function renderStorage() {
       </div>
     </div>
 
+    ${P.persistent === false ? `<div class="alert drive-warn" style="display:block"><b>Temporary storage.</b> This server has no persistent disk, so files here are deleted when it redeploys or restarts. Download anything you need to keep.</div>` : ''}
     <div class="drive-top">
       <div class="card drive-meter">
         <div class="drive-meter-head"><div><span class="drive-big">${fmtBytes(d.usedBytes)}</span><span class="drive-of"> of ${fmtBytes(d.quotaBytes)} used</span></div><span class="chip">${fmtBytes(free)} free</span></div>
