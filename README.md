@@ -90,6 +90,30 @@ Open any running bot and press **Web** to get a full browser client for the bot'
 The logo lives in `public/img/wa-logo.svg` (PNG sizes next to it). Messages are still held in memory only and never written to disk.
 New endpoints: `POST /api/bots/:id/web/sendvoice`, `GET /api/bots/:id/web/search`, and `mentions` on `POST /web/send`.
 
+### Link up to 12 WhatsApp numbers from the web client
+
+The left rail of **WhatsApp - by Ntandomods** now has an account switcher:
+
+- Every number you have linked shows as a coloured avatar with an online dot. Click one to switch; the **+** button (or the people icon at the top of the chat list, which also works on mobile) opens **WhatsApp accounts**.
+- **Link a new device**: type the number, press *Get code*, then on that phone open WhatsApp > Linked devices > Link a device > *Link with phone number instead* and type the 8-character code. When WhatsApp confirms, the console creates the bot, starts it and switches to it. No dashboard visit needed.
+- **Previously linked** numbers (saved sessions) can be restored in one click without pairing again.
+- **Remove** unlinks a number from the console (the session stays saved so it can be restored).
+- The limit is **12 accounts per user** (`WEB_ACCOUNT_LIMIT`, default 12). Links made from the console are allowed up to that limit even if the plan's bot-slot limit is lower. Set `WEB_LINK_RESPECT_BOT_LIMIT=1` to make console links obey the paid bot-slot limit again.
+- Every linked number is its own bot process, so 12 accounts need roughly 12 x the memory of one bot. Check your Render instance size.
+
+API: `GET /api/web/accounts`, `POST /api/web/accounts/link {jobId, name?}` (after `POST /api/session/pair` reports `ready`), `POST /api/web/accounts/restore {deviceId, name?}`.
+
+### Rich messages
+
+- **Reply quotes** show the message being replied to (click to jump to it); **forwarded** tag.
+- **Reactions**: a quick emoji row (👍 ❤️ 😂 😮 😢 🙏) on top of the message menu; reactions from both sides appear as chips under the bubble and update live. Click your own chip to remove it.
+- **Polls**: create from the attach menu (2-12 options, single or multiple answers); incoming polls render as cards. Votes are counted in the phone app.
+- **Location**: send your browser location or typed coordinates; incoming pins show a card with OpenStreetMap / Google Maps links (no map tiles are loaded, so nothing leaks to third parties).
+- **Contact cards**: send a vCard from the attach menu; incoming cards have a *Message* button.
+- **Link previews** for incoming links, **jump to latest** button with a counter for messages that arrived while you were scrolled up, and **swipe right to reply** on touch screens.
+
+New routes: `POST /bots/{id}/web/sendpoll | sendlocation | sendcontact` (same 20 messages a minute guardrail).
+
 ---
 
 ## 🚀 Deploy on Render
