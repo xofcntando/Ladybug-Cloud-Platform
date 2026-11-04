@@ -1477,12 +1477,18 @@ async function renderDevelopers() {
     ${sec('start', 'Get started in 5 minutes', `
       ${step(1, 'Create an account', state.user ? 'You are signed in as <b>' + esc(state.user.username) + '</b>.' : '<a href="#/register">Sign up free</a> or <a href="#/login">log in</a>. Every account can use the free read-only API.')}
       ${step(2, 'Create an API key', 'Use the <b>API keys</b> section below. Copy it straight away, it is shown once. Treat it like a password and never put it in front-end code.')}
-      ${step(3, 'Make your first call', 'Send the key as a bearer token. Replace <code>lbk_your_key_here</code> with yours.')}
-      ${code(`curl ${base}/me \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
+      ${step(3, 'Make your first call', 'Send the key as a bearer token. Replace <code>lbk_your_key_here_ntandomods</code> with yours. Every key ends in <code>_ntandomods</code>.')}
+      ${code(`curl ${base}/me \\\n  -H "Authorization: Bearer lbk_your_key_here_ntandomods"`)}
+
+    ${sec('commands', 'Custom commands (API Pass)', `
+      <p>Create commands your bot answers in WhatsApp, straight from the API. Edits go live in the running bot within a second, no restart.</p>
+      ${code(`curl -X POST ${base}/bots/BOT_ID/commands \\\n  -H "Authorization: Bearer lbk_your_key_here_ntandomods" -H "Content-Type: application/json" \\\n  -d '{"name":"hello","response":"Hi {name}! You said: {args}","cooldownSeconds":5}'`)}
+      <p>Types: <code>text</code>, <code>image</code> (public image URL + caption) and <code>webhook</code> (your HTTPS endpoint gets the message, signed with <code>X-Ladybug-Signature</code>, and its reply is sent back). Placeholders: <code>{name} {sender} {args} {arg1}..{arg9} {group} {botname} {date} {time}</code>. Restrict with <code>access</code> (everyone, admins, owner) and <code>scope</code> (any, group, private). See <code>GET ${base}/commands/meta</code> and the OpenAPI file for everything.</p>
+    `)}
       ${code(`# Python\nimport os, requests\nH = {"Authorization": "Bearer " + os.environ["LADYBUG_KEY"]}\nprint(requests.get("${base}/bots", headers=H).json())`)}
       ${code(`// Node 18+\nconst r = await fetch("${base}/bots", { headers: { Authorization: "Bearer " + process.env.LADYBUG_KEY } });\nconsole.log((await r.json()).bots);`)}
       ${step(4, 'Need to control bots? Get the API Pass', 'Free keys are read-only. The <a href="#/pay?buy=api">API Pass</a> unlocks write keys: start/stop/restart, create and delete bots, pairing, env vars, webhooks and live logs.')}
-      ${step(5, 'Handle errors and limits', 'Every error is JSON like <code>{"error":"message"}</code>. Back off when you get a <code>429</code> and honour the <code>Retry-After</code> header.')}
+      ${step(5, 'Handle errors and limits', 'Every error is JSON like <code>{"error":"message","code":"rate_limited","requestId":"req_..."}</code> (quote the requestId when you contact support). Add an <code>Idempotency-Key</code> header to POST calls so retries never create duplicates. Back off when you get a <code>429</code> and honour the <code>Retry-After</code> header.')}
     `)}
 
     ${sec('keys', 'API keys', state.user ? `
@@ -1521,7 +1527,7 @@ async function renderDevelopers() {
       ${note('Events: <code>bot.started</code>, <code>bot.stopped</code>, <code>bot.crashed</code>, <code>bot.online</code>, <code>bot.logged_out</code>, <code>bot.conflict</code>. Use <b>Send test</b> in the list above to try your endpoint.')}
 
       <h4 class="dev-h">Watch logs live ${P}</h4>
-      ${code(`curl -N ${base}/bots/BOT_ID/logs/stream?tail=50 \\\n  -H "Authorization: Bearer lbk_your_key_here"\n\n# you receive:  event: log   data: {"t":..., "stream":"stdout", "line":"..."}\n#               event: bot   data: {"type":"crashed", ...}`)}
+      ${code(`curl -N ${base}/bots/BOT_ID/logs/stream?tail=50 \\\n  -H "Authorization: Bearer lbk_your_key_here_ntandomods"\n\n# you receive:  event: log   data: {"t":..., "stream":"stdout", "line":"..."}\n#               event: bot   data: {"type":"crashed", ...}`)}
       ${note('Session IDs and your custom env values are hidden in log output. Streams last up to 30 minutes, so reconnect when you receive <code>event: end</code>. EventSource cannot send the Authorization header, so use curl or <code>fetch()</code> streaming.')}
 
       <h4 class="dev-h">Health dashboard in a few lines ${P}</h4>

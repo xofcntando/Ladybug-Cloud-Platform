@@ -255,3 +255,14 @@ Automation that reconnects or re-pairs in a loop is a classic way to get numbers
 - Pairing: 5 per account and 2 per phone number, per hour.
 
 The Developers page (`#/developers`) has the full guide, including a "Avoid WhatsApp bans" checklist. Nothing can guarantee a number is never restricted; Ladybug is not an official WhatsApp product.
+
+
+---
+
+## API v1.3 (Ntandomods Developers)
+
+- **Keys end with `_ntandomods`**: new keys look like `lbk_<48 hex>_ntandomods`. Keys issued before this change keep working.
+- **Custom commands**: `POST /api/v1/bots/:id/commands` creates a command the bot answers in WhatsApp (types `text`, `image`, `webhook`; access `everyone|admins|owner`; scope `any|group|private`; per-user cooldown). Also `GET/PATCH/DELETE /bots/:id/commands/:cid`, `POST .../enable|disable`, `POST .../rotate-secret`, `POST /bots/:id/commands/bulk` (up to 25, all or nothing) and `GET /commands/meta`. Needs an API Pass and a write key. Commands are stored on the bot, written to `data/custom-commands/<botId>.json` and hot-reloaded by the bot, so no restart is needed. Custom commands take priority over built-ins with the same name.
+- **Webhook commands** are POSTed JSON, signed with `X-Ladybug-Signature: sha256=<hmac>`, 5 s timeout, HTTPS only, private/internal addresses blocked (including after DNS resolution).
+- **Advanced behaviour**: `X-Request-Id` on every response, uniform errors `{error, code, requestId}`, `Idempotency-Key` on POST (10 min replay), pagination/filtering on `GET /bots` (`status`, `q`, `limit`, `offset`), log filters (`since`, `stream`, `q`) with a `cursor`, and batch control `POST /bots/actions`.
+- The installer re-applies the one-line `handler.js` hook and copies `lib/bot-shims/customCommands.js` after any bot update, like the premium gate.
