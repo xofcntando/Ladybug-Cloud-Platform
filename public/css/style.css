@@ -930,3 +930,12 @@ body[data-page]:not([data-page="/"]):not([data-page="/pricing"])::before{
 @media(max-width:760px){.compare-row{grid-template-columns:1fr 1fr;gap:6px 12px}.compare-head span:nth-child(n+3){display:none}.compare-row>span:nth-child(n+3){grid-column:span 1}}
 
 .drive-warn{margin-bottom:16px;background:var(--warn-soft);border:1px solid rgba(240,180,58,.4);color:#ffd88a;border-radius:var(--r-md);padding:12px 16px;font-size:14px}
+
+
+/* ---- developer API page ---- */
+pre.code-block { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0 0; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.6; white-space: pre; }
+.dev-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.dev-table th, .dev-table td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.dev-table th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+.key-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.key-row small { color: var(--muted); }

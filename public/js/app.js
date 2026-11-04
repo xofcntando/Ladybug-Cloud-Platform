@@ -247,6 +247,7 @@ const routes = {
   '/support': renderSupport,
   '/settings': renderSettings,
   '/storage': renderStorage,
+  '/developers': renderDevelopers,
 };
 
 async function navigate() {
@@ -282,6 +283,7 @@ function renderNav() {
       <a href="#/pay" class="nav-link hide-sm">Pay</a>
       <a href="#/support" class="nav-link hide-sm">Contact admin</a>
       <a href="#/settings" class="nav-link hide-sm">Settings</a>
+      <a href="#/developers" class="nav-link hide-sm">API</a>
       <a href="#/status" class="nav-link hide-sm">Status</a>
       ${state.user.isAdmin ? '<a href="#/admin" class="nav-link hide-sm">Admin</a>' : ''}
       <span class="nav-sep hide-sm"></span>
@@ -298,6 +300,7 @@ function renderNav() {
     el.innerHTML = `
       <a href="#/pricing" class="nav-link hide-sm">Pricing</a>
       <a href="#/status" class="nav-link hide-sm">Status</a>
+      <a href="#/developers" class="nav-link hide-sm">API</a>
       <a href="#/login" class="nav-link">Log in</a>
       <a href="#/register" class="btn btn-primary btn-sm">Start free trial</a>`;
   }
@@ -1417,6 +1420,94 @@ function startStatusPolling() {
       }
     } catch (e) { /* ignore */ }
   }, 5000);
+}
+
+/* ---------------------------------------------------------------- developers (public API) */
+async function renderDevelopers() {
+  const base = location.origin + '/api/v1';
+  const ex = (cmd) => `<pre class="code-block">${esc(cmd)}</pre>`;
+  const endpoints = [
+    ['GET', '/ping', 'none', 'Health check'],
+    ['GET', '/me', 'read', 'Your account, plan and the key in use'],
+    ['GET', '/billing', 'read', 'Coins, trial and pass status'],
+    ['GET', '/bots', 'read', 'List your bots and your bot limit'],
+    ['GET', '/bots/{id}', 'read', 'One bot: status, uptime, WhatsApp state, resources'],
+    ['GET', '/bots/{id}/logs?limit=200', 'read', 'Recent log lines (max 1000)'],
+    ['POST', '/bots/{id}/start', 'write', 'Start a bot (uses coins / trial like the dashboard)'],
+    ['POST', '/bots/{id}/stop', 'write', 'Stop a bot'],
+    ['POST', '/bots/{id}/restart', 'write', 'Restart a bot'],
+  ];
+  $('#view').innerHTML = `
+  <div class="app"><div class="wrap">
+    <div class="app-head"><div><h1>Developer API</h1><p>Control your Ladybug bots from scripts, CI, Discord/Slack bots or your own dashboard.</p></div></div>
+
+    <div class="card" id="keysCard" style="margin-bottom:18px">
+      <h3>API keys</h3>
+      ${state.user ? `
+        <p class="pay-note">Keys are shown once, so copy yours straight away. Treat a key like a password: anyone holding a <b>write</b> key can start and stop your bots. Max 5 keys.</p>
+        <div class="alert alert-error" id="keyErr"></div>
+        <div id="newKeyBox" class="alert alert-ok"></div>
+        <div id="keyList" style="margin:12px 0"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="margin:0;flex:1;min-width:180px"><label>Key name</label><input class="input" id="keyName" maxlength="40" placeholder="e.g. my-script" /></div>
+          <div class="field" style="margin:0"><label>Access</label>
+            <select class="input" id="keyScope"><option value="read">Read only</option><option value="write">Read + control bots</option></select></div>
+          <button class="btn btn-primary" id="keyCreate">Create key</button>
+        </div>` : `<p class="pay-note"><a href="#/login">Log in</a> or <a href="#/register">create a free account</a> to generate an API key.</p>`}
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <h3>Quick start</h3>
+      <p class="pay-note">Base URL: <code>${esc(base)}</code>. Send your key as a bearer token. All responses are JSON. Limit: 120 requests per minute per key.</p>
+      ${ex(`curl ${base}/bots \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
+      ${ex(`# restart a bot (needs a write key)\ncurl -X POST ${base}/bots/BOT_ID/restart \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
+      ${ex(`// Node 18+\nconst r = await fetch("${base}/bots", {\n  headers: { Authorization: "Bearer " + process.env.LADYBUG_KEY },\n});\nconsole.log((await r.json()).bots);`)}
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <h3>Endpoints</h3>
+      <div style="overflow-x:auto"><table class="dev-table">
+        <thead><tr><th>Method</th><th>Path</th><th>Scope</th><th>What it does</th></tr></thead>
+        <tbody>${endpoints.map((e) => `<tr><td><span class="chip ${e[0] === 'POST' ? '' : 'on'}">${e[0]}</span></td><td><code>${esc(e[1])}</code></td><td>${e[2]}</td><td>${esc(e[3])}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <p class="pay-note" style="margin-top:12px">Errors look like <code>{"error":"message"}</code> with a normal status: 401 bad key, 403 read-only key, 402 out of coins, 404 not your bot, 429 rate limited. Machine-readable spec: <a href="/api/v1/openapi.json" target="_blank" rel="noopener">openapi.json</a>. API keys cannot change passwords, payments, env vars or storage.</p>
+    </div>
+  </div></div>`;
+
+  if (!state.user) return;
+
+  const drawKeys = async () => {
+    try {
+      const r = await api('/api/account/keys');
+      $('#keyList').innerHTML = r.keys.length
+        ? r.keys.map((k) => `
+          <div class="key-row">
+            <div><b>${esc(k.name)}</b> <span class="chip ${k.scope === 'write' ? '' : 'on'}">${k.scope}</span><br>
+              <small><code>${esc(k.preview)}</code> &middot; created ${esc(timeAgo(Date.parse(k.createdAt)))} &middot; ${k.lastUsedAt ? 'used ' + esc(timeAgo(Date.parse(k.lastUsedAt))) : 'never used'}</small></div>
+            <button class="btn btn-sm btn-danger" data-revoke="${esc(k.id)}">Revoke</button>
+          </div>`).join('')
+        : '<p class="pay-note">No keys yet.</p>';
+      $$('[data-revoke]').forEach((b) => (b.onclick = async () => {
+        if (!confirm('Revoke this key? Anything using it stops working immediately.')) return;
+        try { await api('/api/account/keys/' + b.dataset.revoke, { method: 'DELETE' }); toast('Key revoked'); drawKeys(); }
+        catch (e) { toast(e.message, 'error'); }
+      }));
+    } catch (e) { $('#keyList').textContent = e.message; }
+  };
+  drawKeys();
+
+  $('#keyCreate').onclick = async () => {
+    const err = $('#keyErr'); err.classList.remove('show');
+    try {
+      const r = await api('/api/account/keys', { method: 'POST', body: { name: $('#keyName').value, scope: $('#keyScope').value } });
+      const box = $('#newKeyBox');
+      box.classList.add('show');
+      box.innerHTML = `<b>Copy your new key now. You will not see it again.</b><br><code id="newKey" style="word-break:break-all;user-select:all">${esc(r.key)}</code> <button class="btn btn-sm" id="copyKey">Copy</button>`;
+      $('#copyKey').onclick = () => { navigator.clipboard.writeText(r.key).then(() => toast('Copied')); };
+      $('#keyName').value = '';
+      drawKeys();
+    } catch (e) { err.textContent = e.message; err.classList.add('show'); }
+  };
 }
 
 /* ---------------------------------------------------------------- status */
