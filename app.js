@@ -24,6 +24,7 @@ const mongoSync = require('./lib/mongo-sync');
 const envvars = require('./lib/envvars');
 const alerts = require('./lib/alerts');
 const uptime = require('./lib/uptime');
+const apikeys = require('./lib/apikeys');
 const sessioninfo = require('./lib/sessioninfo');
 const compression = require('compression');
 const storage = require('./lib/storage');
@@ -332,6 +333,24 @@ app.post('/api/account/alerts/test', requireAuth, async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: e.message || 'Could not reach the webhook.' });
   }
+});
+
+// ---------------------------------------------------------------- API keys (managed from the dashboard)
+app.get('/api/account/keys', requireAuth, (req, res) => {
+  res.json({ keys: apikeys.list(req.user), max: apikeys.MAX_KEYS });
+});
+
+app.post('/api/account/keys', requireAuth, (req, res) => {
+  const { name, scope } = req.body || {};
+  const r = apikeys.create(req.user, { name, scope });
+  if (r.error) return res.status(400).json({ error: r.error });
+  // the full key is returned exactly once
+  res.json({ ok: true, key: r.key, record: r.record });
+});
+
+app.delete('/api/account/keys/:id', requireAuth, (req, res) => {
+  if (!apikeys.revoke(req.user, req.params.id)) return res.status(404).json({ error: 'Key not found' });
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------- billing / coins
@@ -868,10 +887,11 @@ app.delete('/api/bots/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/bots/:id/start', requireAuth, (req, res) => {
-  const bot = ownBot(req, res);
-  if (!bot) return;
-
+/**
+ * Shared bot-control helpers. Used by both the dashboard routes (/api/bots/...)
+ * and the public API (/api/v1/bots/...). Each returns { code, body }.
+ */
+function startBotFor(bot, fallbackUser) {
   // Safety net: if another bot is still running on the same session, stop it
   // first. Two sockets on one session always end in a conflict loop.
   const twin = db
@@ -882,34 +902,51 @@ app.post('/api/bots/:id/start', requireAuth, (req, res) => {
     db.updateBot(twin.id, { status: 'stopped' });
   }
 
-  const owner = db.findUserById(bot.userId) || req.user;
+  const owner = db.findUserById(bot.userId) || fallbackUser;
   const auth = billing.authorize(owner, bot);
-  if (!auth.ok) return res.status(402).json({ error: auth.reason, billing: billing.summary(owner) });
+  if (!auth.ok) return { code: 402, body: { error: auth.reason, billing: billing.summary(owner) } };
   if (auth.charged) db.save();
   db.updateBot(bot.id, { status: 'running', suspendedReason: null, ...(auth.until ? { coinPaidUntil: auth.until } : {}) });
   const r = bots.start(db.findBotById(bot.id));
-  if (!r.ok) return res.status(400).json({ error: r.error });
-  res.json({ ok: true, preparing: !!r.preparing, message: r.message, status: bots.status(bot.id) });
+  if (!r.ok) return { code: 400, body: { error: r.error } };
+  return { code: 200, body: { ok: true, preparing: !!r.preparing, message: r.message, status: bots.status(bot.id) } };
+}
+
+function stopBotFor(bot) {
+  db.updateBot(bot.id, { status: 'stopped' });
+  bots.stop(bot.id);
+  return { code: 200, body: { ok: true, status: bots.status(bot.id) } };
+}
+
+function restartBotFor(bot, fallbackUser) {
+  const owner = db.findUserById(bot.userId) || fallbackUser;
+  const auth = billing.authorize(owner, bot);
+  if (!auth.ok) return { code: 402, body: { error: auth.reason, billing: billing.summary(owner) } };
+  if (auth.charged) db.save();
+  db.updateBot(bot.id, { status: 'running', suspendedReason: null, ...(auth.until ? { coinPaidUntil: auth.until } : {}) });
+  bots.restart(db.findBotById(bot.id));
+  return { code: 200, body: { ok: true } };
+}
+
+app.post('/api/bots/:id/start', requireAuth, (req, res) => {
+  const bot = ownBot(req, res);
+  if (!bot) return;
+  const r = startBotFor(bot, req.user);
+  res.status(r.code).json(r.body);
 });
 
 app.post('/api/bots/:id/stop', requireAuth, (req, res) => {
   const bot = ownBot(req, res);
   if (!bot) return;
-  db.updateBot(bot.id, { status: 'stopped' });
-  bots.stop(bot.id);
-  res.json({ ok: true, status: bots.status(bot.id) });
+  const r = stopBotFor(bot);
+  res.status(r.code).json(r.body);
 });
 
 app.post('/api/bots/:id/restart', requireAuth, (req, res) => {
   const bot = ownBot(req, res);
   if (!bot) return;
-  const owner = db.findUserById(bot.userId) || req.user;
-  const auth = billing.authorize(owner, bot);
-  if (!auth.ok) return res.status(402).json({ error: auth.reason, billing: billing.summary(owner) });
-  if (auth.charged) db.save();
-  db.updateBot(bot.id, { status: 'running', suspendedReason: null, ...(auth.until ? { coinPaidUntil: auth.until } : {}) });
-  bots.restart(db.findBotById(bot.id));
-  res.json({ ok: true });
+  const r = restartBotFor(bot, req.user);
+  res.status(r.code).json(r.body);
 });
 
 app.get('/api/bots/:id/logs', requireAuth, (req, res) => {
@@ -1260,6 +1297,8 @@ app.get('/api/admin/storage', requireAdmin, (req, res) => {
       .filter((u) => u.usedBytes > 0).sort((a, b) => b.usedBytes - a.usedBytes).slice(0, 50),
   });
 });
+
+require('./lib/public-api')({ app, db, bots, billing, rateLimit, publicUser, botView, apikeys, startBotFor, stopBotFor, restartBotFor });
 
 // ---------------------------------------------------------------- static
 app.get('/healthz', (req, res) => {

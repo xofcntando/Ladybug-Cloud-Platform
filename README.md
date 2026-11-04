@@ -201,3 +201,24 @@ A visual file manager (`#/storage`): drag-and-drop upload with progress, folders
 ## 🛡️ Service hardening
 
 Security headers on every response, gzip compression, per-IP rate limits (sign-in, sign-up, API, drive), live per-bot memory/CPU on the dashboard, and a richer `/healthz` (memory, load, bots running). Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` yourself - the server warns at boot if the old default is still in use.
+
+## Public API (v1)
+
+Control your bots from scripts, CI or your own dashboard.
+
+1. Log in, open **API** in the top bar and create a key (`read` or `write`). The key is shown once.
+2. Send it as a bearer token to `/api/v1`:
+
+```bash
+curl https://YOUR-SITE/api/v1/bots -H "Authorization: Bearer lbk_your_key"
+curl -X POST https://YOUR-SITE/api/v1/bots/BOT_ID/restart -H "Authorization: Bearer lbk_your_key"
+```
+
+| Method | Path | Scope |
+| --- | --- | --- |
+| GET | `/ping` | none |
+| GET | `/me`, `/billing`, `/bots`, `/bots/{id}`, `/bots/{id}/logs?limit=` | read |
+| POST | `/bots/{id}/start`, `/stop`, `/restart` | write |
+
+Rate limit: 120 requests/minute per key. Machine-readable spec at `/api/v1/openapi.json`.
+Keys are stored as SHA-256 hashes, only see the owner's own bots, and cannot touch passwords, payments, env vars, storage or admin routes.
