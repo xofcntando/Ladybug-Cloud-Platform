@@ -291,3 +291,14 @@ Click your avatar in the left rail (or the person icon at the top of the chat li
 - **Blocked contacts** list with one-click Unblock; the 🚫 button in a chat header blocks that contact
 
 Changes are limited to 8 a minute per bot. The same actions exist in the API under `/bots/{id}/web/profile | privacy | blocklist | block | disappearing`.
+
+### More in WhatsApp - by Ntandomods
+
+- **Photos and files**: attach button, paste a screenshot or drop a file on the chat; preview and caption before sending (8 MB limit; big photos are shrunk automatically). Incoming photos and stickers open by themselves, videos, audio and documents open or download on click.
+- **Message menu** (hover chevron or right click): reply, react, copy, forward, star, download, **edit** (own text, 15 min) and **delete for everyone**. Edits and deletions by the other side update live.
+- **Chat list**: pin (up to 3), archive, mute and mark as read from the chevron or right click. Pins, archive, mutes and stars are stored in your browser only.
+- **Search inside a chat** (highlighted matches, Enter for next), **Ctrl/Cmd+K** to focus chat search, **Esc** closes panels.
+- **Group info** (members, admins, description) and contact info drawer; **Starred messages** list in the left rail.
+- **Notifications**: message sound and desktop notifications (Profile -> Notifications), unread count in the browser tab title.
+
+New API routes: `GET /bots/{id}/web/media | group`, `POST /bots/{id}/web/delete | edit`.

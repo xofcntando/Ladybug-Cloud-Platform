@@ -1229,6 +1229,7 @@ async function renderWebConsole() {
     <nav class="wa-rail">
       <a class="wa-rail-btn on" title="Chats">${WAI.chat}</a>
       <a class="wa-rail-btn" href="#/dashboard" title="Back to my bots">${WAI.bots}</a>
+      <button class="wa-rail-btn" id="waStarBtn" title="Starred messages"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="m12 17.300 6.200 3.700-1.600-7L22 9.200l-7.200-.6L12 2 9.200 8.600 2 9.200 7.400 14l-1.600 7z"/></svg></button>
       <span class="wa-rail-grow"></span>
       <button class="wa-rail-btn" id="waTheme" title="Switch light / dark theme">${WAI.moon}</button>
       <button class="wa-rail-me" id="waMe" title="Profile">${myInitial}</button>
@@ -1248,6 +1249,7 @@ async function renderWebConsole() {
           <button data-tab="all" class="on">All</button>
           <button data-tab="online">Online <i id="waOnlineN">0</i></button>
           <button data-tab="unread">Unread <i id="waUnreadN">0</i></button>
+          <button data-tab="archived">Archived <i id="waArchN">0</i></button>
         </div>
         <div class="wa-list" id="waList"><div class="chat-empty">Loading…</div></div>
         <div class="wa-profile" id="waProfile" hidden></div>
@@ -1260,9 +1262,13 @@ async function renderWebConsole() {
           <div class="wa-empty-foot">${WAI.lock} Messages are shown live and never stored on the server</div>
         </div>
         <div class="wa-top" id="waTop"></div>
+        <div class="wa-find" id="waFind" hidden><input id="waFindInput" placeholder="Search in this chat" autocomplete="off" /><span id="waFindCount"></span><button class="wa-icon-btn" id="waFindClose" title="Close">✕</button></div>
         <div class="wa-thread" id="waThread"></div>
+        <div class="wa-attach" id="waAttach" hidden></div>
         <div class="wa-reply" id="waReply" hidden></div>
         <form class="wa-compose" id="waForm" hidden>
+          <button type="button" class="wa-icon-btn" id="waClipBtn" title="Attach photo or file"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M1.800 12.700 12 2.500c2.400-2.400 6.400-2.400 8.800 0s2.400 6.400 0 8.800L11 21.100c-1.700 1.700-4.500 1.700-6.200 0s-1.700-4.500 0-6.200L13.500 6.200l1.400 1.400-8.700 8.700c-.9.900-.9 2.300 0 3.200s2.300.9 3.200 0l9.800-9.800c1.600-1.600 1.600-4.200 0-5.800s-4.200-1.600-5.800 0L3.200 14.100z"/></svg></button>
+          <input type="file" id="waFile" accept="image/jpeg,image/png,image/webp,video/mp4,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" hidden />
           <div class="wa-emoji-wrap">
             <button type="button" class="wa-icon-btn" id="waEmojiBtn" title="Emoji">${WAI.emoji}</button>
             <div class="wa-emoji-pop" id="waEmojiPop" hidden></div>
@@ -1270,6 +1276,7 @@ async function renderWebConsole() {
           <div class="wa-input-wrap"><textarea id="waText" rows="1" maxlength="4096" placeholder="Type a message"></textarea></div>
           <button class="wa-send" type="submit" title="Send">${WAI.send}</button>
         </form>
+        <aside class="wa-info" id="waInfo"></aside>
       </section>
     </div>
   </div>`;
@@ -1295,7 +1302,7 @@ async function renderWebConsole() {
   }
 
   const base = `/api/bots/${bot.id}/web`;
-  const S = { chats: [], jid: null, msgs: [], replyTo: null, q: '', tab: 'all', conn: null, me: null, wa: null, groupSize: null, typingOn: false };
+  const S = { chats: [], jid: null, msgs: [], replyTo: null, q: '', tab: 'all', conn: null, me: null, wa: null, groupSize: null, typingOn: false, find: '' };
   const TYPING_TTL = 12000, ONLINE_TTL = 180000;
   // Presence as it should look right now. Typing expires on its own and a silent 'online' goes stale.
   function eff(c) {
@@ -1340,6 +1347,57 @@ async function renderWebConsole() {
   const tick = (m) => (m.fromMe ? `<span class="wa-tick ${m.status === 'read' ? 'read' : ''}">${m.status === 'delivered' || m.status === 'read' ? TICK2 : TICK1}</span>` : '');
   const icon = { image: '🖼', video: '🎬', voice: '🎤', audio: '🎵', document: '📄', sticker: '✨', contact: '👤', location: '📍', poll: '📊' };
 
+  /* ---- per-bot preferences kept in this browser only (pins, archive, mute, stars, sounds) ---- */
+  const PREF_KEY = 'wa_prefs_' + bot.id;
+  const P = (() => { try { return Object.assign({ pinned: [], archived: [], muted: [], starred: {}, sound: true, desktop: false }, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { return { pinned: [], archived: [], muted: [], starred: {}, sound: true, desktop: false }; } })();
+  const savePrefs = () => { try { localStorage.setItem(PREF_KEY, JSON.stringify(P)); } catch (e) { /* storage full or blocked */ } };
+  const toggleIn = (arr, v) => { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); savePrefs(); return i < 0; };
+  const fmtSize = (n) => (!n ? '' : n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+  const MEDIA = {}; // message id -> { mime, data, name } once opened
+  const WAI2 = {
+    clip: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M1.8 12.700 12 2.500c2.400-2.400 6.400-2.400 8.800 0s2.400 6.400 0 8.800L11 21.100c-1.700 1.700-4.500 1.700-6.200 0s-1.700-4.500 0-6.200L13.500 6.200l1.400 1.400-8.700 8.700c-.9.900-.9 2.300 0 3.200s2.300.9 3.200 0l9.800-9.800c1.600-1.600 1.600-4.200 0-5.800s-4.200-1.600-5.800 0L3.200 14.100c-.1 0-1.400-1.400-1.400-1.400z"/></svg>',
+    find: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M15.900 14.300H15l-.3-.3c1-1.100 1.600-2.700 1.600-4.300 0-3.700-3-6.700-6.700-6.700S3 6 3 9.700s3 6.700 6.700 6.700c1.600 0 3.200-.6 4.300-1.600l.3.3v.8l5.100 5.100 1.500-1.500-5-5.200zm-6.200 0a4.600 4.600 0 1 1 0-9.200 4.600 4.600 0 0 1 0 9.200z"/></svg>',
+    info: '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>',
+    star: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="m12 17.300 6.200 3.700-1.600-7L22 9.200l-7.200-.6L12 2 9.200 8.600 2 9.200 7.400 14l-1.600 7z"/></svg>',
+    chev: '<svg viewBox="0 0 19 20" width="16" height="17"><path fill="currentColor" d="M3.800 6.700l5.700 5.700 5.700-5.700 1.600 1.600-7.300 7.300-7.300-7.300z"/></svg>',
+    doc: '<svg viewBox="0 0 24 24" width="30" height="30"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.500L18.500 9H13z"/></svg>',
+  };
+  function beep() {
+    if (!P.sound) return;
+    try {
+      const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(880, ctx.currentTime); o.frequency.setValueAtTime(660, ctx.currentTime + 0.09);
+      g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+      o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.24);
+    } catch (e) { /* audio blocked until the user interacts */ }
+  }
+  function notifyNew(d) {
+    if (d.entry.fromMe || d.entry.type === 'reaction' || P.muted.includes(d.jid)) return;
+    if (d.jid === S.jid && !document.hidden) return;
+    beep();
+    if (P.desktop && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification(d.chat.name || 'New message', { body: d.entry.text || d.entry.type, icon: '/img/logo.png', tag: d.jid });
+        n.onclick = () => { window.focus(); openChat(d.jid); n.close(); };
+      } catch (e) { /* not allowed here */ }
+    }
+  }
+  // Floating menu used for chat and message actions.
+  function popMenu(x, y, items) {
+    document.querySelectorAll('.wa-pop').forEach((e) => e.remove());
+    const m = document.createElement('div');
+    m.className = 'wa-pop';
+    m.innerHTML = items.filter(Boolean).map((it, i) => `<button data-i="${i}" class="${it.danger ? 'danger' : ''}">${it.label}</button>`).join('');
+    const list = items.filter(Boolean);
+    m.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; m.remove(); list[Number(b.dataset.i)].run(); };
+    $('#waApp').appendChild(m);
+    const r = m.getBoundingClientRect();
+    m.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+    m.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+    setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+  }
+
   function paintStatus() {
     const el = $('#waStatus');
     if (!el) return;
@@ -1376,13 +1434,20 @@ async function renderWebConsole() {
     const box = $('#waList');
     if (!box) return;
     paintStatus();
+    const archivedN = S.chats.filter((c) => P.archived.includes(c.jid)).length;
+    const arch = $('#waArchN'); if (arch) arch.textContent = archivedN;
+    const unreadTotal = S.chats.reduce((n, c) => n + (c.unread && !P.muted.includes(c.jid) ? c.unread : 0), 0);
+    document.title = (unreadTotal ? `(${unreadTotal}) ` : '') + 'WhatsApp - by Ntandomods';
     let list = S.chats;
+    if (S.tab === 'archived') list = list.filter((c) => P.archived.includes(c.jid));
+    else list = list.filter((c) => !P.archived.includes(c.jid));
     if (S.tab === 'online') list = list.filter((c) => !c.isGroup && isOnline(c));
     if (S.tab === 'unread') list = list.filter((c) => c.unread);
     if (S.tab === 'online') list = [...list].sort((a, b) => (eff(b).state === 'composing') - (eff(a).state === 'composing'));
+    list = [...list].sort((a, b) => (P.pinned.includes(b.jid) - P.pinned.includes(a.jid)) || (b.lastTs - a.lastTs));
     if (!list.length) {
       box.innerHTML = `<div class="chat-empty">${S.chats.length
-        ? (S.tab === 'online' ? 'Nobody is online right now. People show up here the moment WhatsApp reports them online or typing.' : 'No unread chats.')
+        ? (S.tab === 'online' ? 'Nobody is online right now. People show up here the moment WhatsApp reports them online or typing.' : S.tab === 'archived' ? 'No archived chats.' : 'No unread chats.')
         : 'No chats yet. When someone messages this number it shows up here.'}</div>`;
       return;
     }
@@ -1392,17 +1457,32 @@ async function renderWebConsole() {
       const last = typing
         ? `<span class="wa-last wa-typing-txt">${e.state === 'composing' ? 'typing…' : 'recording audio…'}</span>`
         : `<span class="wa-last">${c.lastFromMe ? 'You: ' : ''}${esc(c.lastText || '')}</span>`;
+      const pinned = P.pinned.includes(c.jid), muted = P.muted.includes(c.jid);
       return `
       <div class="wa-chat ${c.jid === S.jid ? 'active' : ''}" data-jid="${esc(c.jid)}">
         ${avatarHtml(c)}
         <div class="wa-chat-body">
           <div class="wa-chat-row"><b class="wa-name">${esc(c.name)}</b><span>${c.lastTs ? dayLabel(c.lastTs) : ''}</span></div>
-          <div class="wa-chat-row">${last}${c.unread ? `<i class="wa-badge">${c.unread}</i>` : ''}</div>
+          <div class="wa-chat-row">${last}<em class="wa-flags">${muted ? '<u title="Muted">🔕</u>' : ''}${pinned ? '<u title="Pinned">📌</u>' : ''}</em>${c.unread ? `<i class="wa-badge ${muted ? 'muted' : ''}">${c.unread}</i>` : ''}<button class="wa-chat-menu" data-cmenu="${esc(c.jid)}" title="Options">${WAI2.chev}</button></div>
         </div>
       </div>`;
     }).join('');
-    box.querySelectorAll('[data-jid]').forEach((el) => { el.onclick = () => openChat(el.dataset.jid); });
+    box.querySelectorAll('[data-jid]').forEach((el) => {
+      el.onclick = (e) => { if (e.target.closest('[data-cmenu]')) return; openChat(el.dataset.jid); };
+      el.oncontextmenu = (e) => { e.preventDefault(); chatMenu(el.dataset.jid, e.clientX, e.clientY); };
+    });
+    box.querySelectorAll('[data-cmenu]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); const r = b.getBoundingClientRect(); chatMenu(b.dataset.cmenu, r.left, r.bottom); }; });
     queueAvatars(list);
+  }
+  function chatMenu(jid, x, y) {
+    const c = S.chats.find((k) => k.jid === jid);
+    if (!c) return;
+    popMenu(x, y, [
+      { label: P.pinned.includes(jid) ? 'Unpin chat' : 'Pin chat', run: () => { if (!P.pinned.includes(jid) && P.pinned.length >= 3) return toast('You can pin up to 3 chats', 'err'); toggleIn(P.pinned, jid); paintList(); } },
+      { label: P.archived.includes(jid) ? 'Unarchive chat' : 'Archive chat', run: () => { toggleIn(P.archived, jid); paintList(); } },
+      { label: P.muted.includes(jid) ? 'Unmute notifications' : 'Mute notifications', run: () => { toggleIn(P.muted, jid); paintList(); } },
+      c.unread ? { label: 'Mark as read', run: () => { c.unread = 0; api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); paintList(); } } : null,
+    ]);
   }
 
   // Profile pictures load one at a time so we never hammer WhatsApp.
@@ -1436,9 +1516,109 @@ async function renderWebConsole() {
     if (!top || !c || !S.jid) return;
     const line = presenceLine(c);
     const live = !c.isGroup && isOnline(c);
-    top.innerHTML = `<button class="wa-icon-btn wa-back" id="waBack" title="Back">←</button>${avatarHtml(c)}<div class="wa-who-top"><b>${esc(c.name)}</b><span class="wa-presence ${live ? 'live' : ''} ${eff(c).state === 'composing' ? 'typing' : ''}">${esc(line || S.jid.split('@')[0])}</span></div>${c.isGroup ? '' : '<button class="wa-icon-btn wa-block-btn" id="waBlockBtn" title="Block contact"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM4 12a8 8 0 0 1 12.900-6.300L5.700 16.900A8 8 0 0 1 4 12zm8 8a8 8 0 0 1-4.900-1.700L18.300 7.100A8 8 0 0 1 12 20z"/></svg></button>'}`;
-    $('#waBack').onclick = () => $('#waShell').classList.remove('chat-open');
+    top.innerHTML = `<button class="wa-icon-btn wa-back" id="waBack" title="Back">←</button><div class="wa-top-click" id="waTopInfo">${avatarHtml(c)}<div class="wa-who-top"><b>${esc(c.name)}</b><span class="wa-presence ${live ? 'live' : ''} ${eff(c).state === 'composing' ? 'typing' : ''}">${esc(line || S.jid.split('@')[0])}</span></div></div>
+      <button class="wa-icon-btn" id="waFindBtn" title="Search in chat">${WAI2.find}</button>
+      <button class="wa-icon-btn" id="waInfoBtn" title="${c.isGroup ? 'Group info' : 'Contact info'}">${WAI2.info}</button>
+      ${c.isGroup ? '' : '<button class="wa-icon-btn wa-block-btn" id="waBlockBtn" title="Block contact"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM4 12a8 8 0 0 1 12.900-6.300L5.700 16.900A8 8 0 0 1 4 12zm8 8a8 8 0 0 1-4.900-1.700L18.300 7.100A8 8 0 0 1 12 20z"/></svg></button>'}`;
+    $('#waBack').onclick = () => { $('#waShell').classList.remove('chat-open'); $('#waMain').classList.remove('info-open'); };
     const bb = $('#waBlockBtn'); if (bb) bb.onclick = toggleBlock;
+    $('#waFindBtn').onclick = toggleFind;
+    $('#waInfoBtn').onclick = openInfo;
+    $('#waTopInfo').onclick = openInfo;
+  }
+
+  /* search inside the open chat */
+  function toggleFind() {
+    const bar = $('#waFind');
+    bar.hidden = !bar.hidden;
+    S.find = '';
+    $('#waFindInput').value = '';
+    if (!bar.hidden) $('#waFindInput').focus();
+    paintThread(false);
+  }
+
+  /* group / contact info drawer */
+  async function openInfo() {
+    const c = S.chats.find((x) => x.jid === S.jid) || S.chat;
+    if (!c) return;
+    const box = $('#waInfo');
+    $('#waMain').classList.add('info-open');
+    box.innerHTML = `<header class="wa-prof-head"><button class="wa-icon-btn" id="waInfoClose" title="Close">✕</button><b>${c.isGroup ? 'Group info' : 'Contact info'}</b></header><div class="chat-empty">Loading…</div>`;
+    $('#waInfoClose').onclick = () => $('#waMain').classList.remove('info-open');
+    const head = `<div class="wa-info-top">${avatarHtml(c, 'big')}<h3>${esc(c.name)}</h3><small>${c.isGroup ? '' : '+' + esc(String(c.jid).split('@')[0].split(':')[0])}</small></div>`;
+    if (!c.isGroup) {
+      const mediaN = S.msgs.filter((m) => ['image', 'video', 'document', 'audio', 'voice'].includes(m.type)).length;
+      box.innerHTML = `<header class="wa-prof-head"><button class="wa-icon-btn" id="waInfoClose">✕</button><b>Contact info</b></header><div class="wa-prof-body">${head}<div class="wa-set-row"><span>Messages in this session</span><b>${S.msgs.length}</b></div><div class="wa-set-row"><span>Media and files</span><b>${mediaN}</b></div><div class="wa-set-row"><span>Starred messages</span><b>${Object.values(P.starred).filter((x) => x.jid === c.jid).length}</b></div></div>`;
+      $('#waInfoClose').onclick = () => $('#waMain').classList.remove('info-open');
+      return;
+    }
+    try {
+      const g = await api(`${base}/group?jid=${encodeURIComponent(c.jid)}`);
+      const people = g.participants.slice().sort((a, b) => (!!b.admin - !!a.admin) || (b.me - a.me));
+      box.innerHTML = `<header class="wa-prof-head"><button class="wa-icon-btn" id="waInfoClose">✕</button><b>Group info</b></header><div class="wa-prof-body">
+        <div class="wa-info-top">${avatarHtml(c, 'big')}<h3>${esc(g.subject)}</h3><small>Group · ${g.size} participants${g.created ? ' · created ' + esc(new Date(g.created * 1000).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })) : ''}</small></div>
+        ${g.desc ? `<h4 class="wa-sec">Description</h4><p class="wa-desc">${esc(g.desc).replace(/\n/g, '<br>')}</p>` : ''}
+        <h4 class="wa-sec">${g.size} participants</h4>
+        ${people.map((p) => `<div class="wa-blocked"><span>${esc(p.me ? 'You' : (p.name || '+' + p.phone))}</span>${p.admin ? '<em class="wa-admin">Group admin</em>' : ''}</div>`).join('')}
+      </div>`;
+      $('#waInfoClose').onclick = () => $('#waMain').classList.remove('info-open');
+    } catch (e) {
+      box.innerHTML = `<header class="wa-prof-head"><button class="wa-icon-btn" id="waInfoClose">✕</button><b>Group info</b></header><div class="wa-prof-body">${head}<div class="chat-empty">${esc(e.message)}</div></div>`;
+      $('#waInfoClose').onclick = () => $('#waMain').classList.remove('info-open');
+    }
+  }
+
+  const hl = (text) => {
+    const safe = esc(text).replace(/\n/g, '<br>');
+    const q = (S.find || '').trim();
+    if (!q) return safe;
+    const re = new RegExp('(' + esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    return safe.replace(re, '<mark>$1</mark>');
+  };
+  function mediaHtml(m) {
+    const got = MEDIA[m.id];
+    const meta = m.media || {};
+    if (m.type === 'sticker' && got) return `<img class="wa-img sticker" src="${got.data}" alt="">`;
+    if (m.type === 'image' && got) return `<img class="wa-img" data-zoom="${esc(m.id)}" src="${got.data}" alt="photo">`;
+    if (m.type === 'video' && got) return `<video class="wa-vid" src="${got.data}" controls preload="metadata"></video>`;
+    if ((m.type === 'audio' || m.type === 'voice') && got) return `<audio class="wa-aud" src="${got.data}" controls></audio>`;
+    if (m.type === 'document') {
+      return `<div class="wa-doc" data-open="${esc(m.id)}">${WAI2.doc}<div><b>${esc(meta.name || m.text || 'Document')}</b><small>${esc(fmtSize(meta.size))}${got ? ' · tap to save' : ' · tap to download'}</small></div></div>`;
+    }
+    const nice = { image: 'photo', video: 'video', audio: 'audio file', voice: 'voice message', sticker: 'sticker' }[m.type];
+    if (nice) return `<button class="wa-load" data-open="${esc(m.id)}">${icon[m.type]} Load ${nice}${meta.size ? ' (' + esc(fmtSize(meta.size)) + ')' : ''}</button>`;
+    return `<span class="wa-media">${icon[m.type] || ''} ${esc(m.type)}</span>`;
+  }
+  const KNOWN_MEDIA = ['image', 'video', 'voice', 'audio', 'document', 'sticker'];
+  async function openMedia(id, { save } = {}) {
+    const m = S.msgs.find((x) => x.id === id);
+    if (!m) return;
+    if (!MEDIA[id]) {
+      try { MEDIA[id] = await api(`${base}/media?jid=${encodeURIComponent(S.jid)}&id=${encodeURIComponent(id)}`); }
+      catch (e) { toast(e.message, 'err'); return; }
+      paintThread(false);
+    }
+    if (save || m.type === 'document') {
+      const a = document.createElement('a');
+      a.href = MEDIA[id].data; a.download = MEDIA[id].name || m.text || (m.type + '-' + id.slice(0, 6));
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+  }
+  // photos and stickers open by themselves (one at a time), everything else waits for a click
+  let autoBusy = false;
+  async function autoLoadImages() {
+    if (autoBusy) return;
+    autoBusy = true;
+    try {
+      for (const m of S.msgs.slice(-40)) {
+        if (!$('#waThread')) break;
+        if ((m.type === 'image' || m.type === 'sticker') && !MEDIA[m.id] && !(m.media && m.media.size > 1.5 * 1048576) && !m._failed) {
+          try { MEDIA[m.id] = await api(`${base}/media?jid=${encodeURIComponent(S.jid)}&id=${encodeURIComponent(m.id)}`); paintThread(false); }
+          catch (e) { m._failed = true; }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
+    } finally { autoBusy = false; }
   }
 
   function paintThread(stick) {
@@ -1446,19 +1626,94 @@ async function renderWebConsole() {
     if (!t) return;
     const nearBottom = stick || t.scrollHeight - t.scrollTop - t.clientHeight < 120;
     let lastDay = '';
+    let hits = 0;
     t.innerHTML = S.msgs.map((m) => {
       const day = new Date(m.ts * 1000).toDateString();
       const sep = day !== lastDay ? `<div class="wa-day">${esc(new Date(m.ts * 1000).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }))}</div>` : '';
       lastDay = day;
       if (m.type === 'reaction') return sep;
-      const body = m.text ? esc(m.text).replace(/\n/g, '<br>') : '';
-      const media = icon[m.type] ? `<span class="wa-media">${icon[m.type]} ${esc(m.type)}</span>${body ? '<br>' : ''}` : '';
       const who = !m.fromMe && S.chat && S.chat.isGroup ? `<div class="wa-who">${esc(m.senderName || '+' + m.sender)}</div>` : '';
-      return `${sep}<div class="wa-msg ${m.fromMe ? 'me' : 'them'}" data-id="${esc(m.id)}">${who}${media}${body}<div class="wa-meta">${hhmm(m.ts)} ${tick(m)}<a href="#" data-reply="${esc(m.id)}">Reply</a><a href="#" data-react="${esc(m.id)}">👍</a></div></div>`;
+      const star = P.starred[m.id] ? '<span class="wa-star" title="Starred">★</span>' : '';
+      const edited = m.edited ? '<span class="wa-edited">edited</span>' : '';
+      const menu = m.deleted ? '' : `<button class="wa-msg-menu" data-mmenu="${esc(m.id)}" title="Options">${WAI2.chev}</button>`;
+      let inner;
+      if (m.deleted) inner = '<span class="wa-deleted">This message was deleted</span>';
+      else {
+        const body = m.text ? hl(m.text) : '';
+        const media = KNOWN_MEDIA.includes(m.type) ? mediaHtml(m) : (icon[m.type] ? `<span class="wa-media">${icon[m.type]} ${esc(m.type)}</span>` : '');
+        const showText = m.type !== 'document' && m.text;
+        inner = `${media}${media && showText ? '<br>' : ''}${showText ? body : ''}`;
+        if (S.find && m.text && m.text.toLowerCase().includes(S.find.toLowerCase())) hits += 1;
+      }
+      return `${sep}<div class="wa-msg ${m.fromMe ? 'me' : 'them'}${m.edited || P.starred[m.id] ? ' wide' : ''}" data-id="${esc(m.id)}">${menu}${who}${inner}<div class="wa-meta">${star}${edited}${hhmm(m.ts)} ${tick(m)}</div></div>`;
     }).join('') || '<div class="chat-empty">No messages yet.</div>';
-    t.querySelectorAll('[data-reply]').forEach((a) => { a.onclick = (e) => { e.preventDefault(); const m = S.msgs.find((x) => x.id === a.dataset.reply); setReply(m); }; });
-    t.querySelectorAll('[data-react]').forEach((a) => { a.onclick = async (e) => { e.preventDefault(); try { await api(base + '/send', { method: 'POST', body: { jid: S.jid, quotedId: a.dataset.react, react: '👍' } }); toast('Reacted'); } catch (er) { toast(er.message, 'err'); } }; });
-    if (nearBottom) t.scrollTop = t.scrollHeight;
+    const cnt = $('#waFindCount'); if (cnt) cnt.textContent = S.find ? hits + ' found' : '';
+    t.querySelectorAll('[data-open]').forEach((el) => { el.onclick = () => openMedia(el.dataset.open); });
+    t.querySelectorAll('[data-zoom]').forEach((el) => { el.onclick = () => zoomImage(el.src); });
+    t.querySelectorAll('[data-mmenu]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); const r = b.getBoundingClientRect(); msgMenu(b.dataset.mmenu, r.left - 120, r.bottom); }; });
+    t.querySelectorAll('.wa-msg[data-id]').forEach((el) => { el.oncontextmenu = (e) => { e.preventDefault(); msgMenu(el.dataset.id, e.clientX, e.clientY); }; });
+    if (nearBottom && !S.find) t.scrollTop = t.scrollHeight;
+    autoLoadImages();
+  }
+
+  function zoomImage(src) {
+    const o = document.createElement('div');
+    o.className = 'wa-lightbox';
+    o.innerHTML = `<img src="${src}" alt=""><a class="wa-lightbox-dl" href="${src}" download="photo.jpg" title="Download">⬇</a>`;
+    o.onclick = (e) => { if (!e.target.closest('a')) o.remove(); };
+    $('#waApp').appendChild(o);
+  }
+
+  function msgMenu(id, x, y) {
+    const m = S.msgs.find((k) => k.id === id);
+    if (!m || m.deleted) return;
+    const fresh = Date.now() / 1000 - m.ts < 15 * 60;
+    popMenu(x, y, [
+      { label: 'Reply', run: () => setReply(m) },
+      { label: 'React 👍', run: async () => { try { await api(base + '/send', { method: 'POST', body: { jid: S.jid, quotedId: m.id, react: '👍' } }); toast('Reacted'); } catch (er) { toast(er.message, 'err'); } } },
+      m.text ? { label: 'Copy text', run: () => { try { navigator.clipboard.writeText(m.text); toast('Copied'); } catch (e) { /* ignore */ } } } : null,
+      m.type === 'text' ? { label: 'Forward', run: () => forwardDialog(m) } : null,
+      { label: P.starred[m.id] ? 'Unstar' : 'Star', run: () => { if (P.starred[m.id]) delete P.starred[m.id]; else P.starred[m.id] = { jid: S.jid, id: m.id, text: m.text || m.type, ts: m.ts, fromMe: m.fromMe, chat: (S.chat && S.chat.name) || '' }; savePrefs(); paintThread(false); } },
+      KNOWN_MEDIA.includes(m.type) ? { label: 'Download', run: () => openMedia(m.id, { save: true }) } : null,
+      m.fromMe && m.type === 'text' && fresh ? { label: 'Edit', run: () => editDialog(m) } : null,
+      m.fromMe ? { label: 'Delete for everyone', danger: true, run: async () => { if (!confirm('Delete this message for everyone?')) return; try { await api(base + '/delete', { method: 'POST', body: { jid: S.jid, id: m.id } }); m.deleted = true; m.text = ''; paintThread(false); } catch (er) { toast(er.message, 'err'); } } } : null,
+    ]);
+  }
+
+  function dialog(html) {
+    const d = document.createElement('div');
+    d.className = 'wa-dialog-back';
+    d.innerHTML = `<div class="wa-dialog">${html}</div>`;
+    d.onclick = (e) => { if (e.target === d) d.remove(); };
+    $('#waApp').appendChild(d);
+    return d;
+  }
+  function editDialog(m) {
+    const d = dialog(`<h3>Edit message</h3><textarea id="waEditText" rows="4" maxlength="4096">${esc(m.text)}</textarea><div class="wa-dialog-act"><button class="wa-btn ghost" data-x>Cancel</button><button class="wa-btn" data-ok>Save</button></div>`);
+    d.querySelector('[data-x]').onclick = () => d.remove();
+    d.querySelector('[data-ok]').onclick = async () => {
+      const text = d.querySelector('#waEditText').value.trim();
+      if (!text || text === m.text) return d.remove();
+      try { await api(base + '/edit', { method: 'POST', body: { jid: S.jid, id: m.id, text } }); m.text = text; m.edited = true; paintThread(false); d.remove(); }
+      catch (er) { toast(er.message, 'err'); }
+    };
+    d.querySelector('#waEditText').focus();
+  }
+  function forwardDialog(m) {
+    const d = dialog(`<h3>Forward message to…</h3><input class="wa-dialog-input" id="waFwdQ" placeholder="Search chats" /><div class="wa-fwd-list" id="waFwdList"></div>`);
+    const draw = (q) => {
+      const list = S.chats.filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase())).slice(0, 60);
+      d.querySelector('#waFwdList').innerHTML = list.map((c) => `<div class="wa-fwd" data-j="${esc(c.jid)}">${avatarHtml(c)}<span>${esc(c.name)}</span></div>`).join('') || '<div class="chat-empty">No chats</div>';
+      d.querySelectorAll('[data-j]').forEach((el) => { el.onclick = async () => { try { await api(base + '/send', { method: 'POST', body: { jid: el.dataset.j, text: m.text } }); toast('Forwarded'); d.remove(); } catch (er) { toast(er.message, 'err'); } }; });
+    };
+    draw('');
+    d.querySelector('#waFwdQ').oninput = (e) => draw(e.target.value);
+    d.querySelector('#waFwdQ').focus();
+  }
+  function starredDialog() {
+    const items = Object.values(P.starred).sort((a, b) => b.ts - a.ts);
+    const d = dialog(`<h3>Starred messages</h3><div class="wa-fwd-list">${items.map((x) => `<div class="wa-starred" data-j="${esc(x.jid)}"><small>${esc(x.fromMe ? 'You' : x.chat)} · ${esc(new Date(x.ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</small><div>${esc(x.text).slice(0, 300)}</div></div>`).join('') || '<div class="chat-empty">No starred messages yet. Use the message menu to star one.</div>'}</div>`);
+    d.querySelectorAll('[data-j]').forEach((el) => { el.onclick = () => { d.remove(); openChat(el.dataset.j); }; });
   }
 
   function setReply(m) {
@@ -1493,6 +1748,8 @@ async function renderWebConsole() {
     S.jid = jid; S.replyTo = null; setReply(null);
     $('#waShell').classList.add('chat-open');
     $('#waMain').classList.add('has-chat');
+    $('#waMain').classList.remove('info-open');
+    $('#waFind').hidden = true; S.find = ''; $('#waFindInput').value = '';
     try {
       const r = await api(`${base}/messages?jid=${encodeURIComponent(jid)}&limit=100`);
       S.msgs = r.messages; S.chat = r.chat;
@@ -1623,6 +1880,10 @@ async function renderWebConsole() {
         <div class="wa-field"><label>About</label><div class="wa-field-row"><input id="waAbout" maxlength="139" value="${esc(p.about || '')}" placeholder="Hey there! I am using WhatsApp." /><button class="wa-icon-btn wa-save" id="waAboutSave" title="Save about"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M9 16.2 4.800 12l-1.400 1.400L9 19 21 7l-1.400-1.400z"/></svg></button></div></div>
         <div class="wa-field"><label>Phone number</label><div class="wa-field-row"><input value="+${esc(p.phone)}" readonly /><button class="wa-icon-btn" id="waCopyPhone" title="Copy"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg></button></div></div>
 
+        <h4 class="wa-sec">Notifications</h4>
+        <label class="wa-set-row"><span>Message sound</span><input type="checkbox" id="waSnd" ${P.sound ? 'checked' : ''} /></label>
+        <label class="wa-set-row"><span>Desktop notifications</span><input type="checkbox" id="waDsk" ${P.desktop ? 'checked' : ''} /></label>
+
         <h4 class="wa-sec">Privacy</h4>
         ${privRows}
         <label class="wa-set-row"><span>Default disappearing messages</span><select id="waDisappear">${DISAPPEAR.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
@@ -1653,6 +1914,14 @@ async function renderWebConsole() {
     profEl.querySelectorAll('[data-priv]').forEach((sel) => {
       sel.onchange = () => guard(() => api(base + '/privacy', { method: 'POST', body: { key: sel.dataset.priv, value: sel.value } }), 'Privacy updated');
     });
+    $('#waSnd').onchange = (e) => { P.sound = e.target.checked; savePrefs(); if (P.sound) beep(); };
+    $('#waDsk').onchange = async (e) => {
+      if (!e.target.checked) { P.desktop = false; return savePrefs(); }
+      if (!('Notification' in window)) { e.target.checked = false; return toast('This browser has no desktop notifications', 'err'); }
+      const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      P.desktop = perm === 'granted'; e.target.checked = P.desktop; savePrefs();
+      if (!P.desktop) toast('Notifications are blocked in your browser settings', 'err');
+    };
     $('#waDisappear').onchange = (e) => guard(() => api(base + '/disappearing', { method: 'POST', body: { seconds: Number(e.target.value) } }), 'Default timer updated');
     profEl.querySelectorAll('[data-unblock]').forEach((b) => {
       b.onclick = () => guard(async () => { await api(base + '/block', { method: 'POST', body: { jid: b.dataset.unblock, block: false } }); b.closest('.wa-blocked').remove(); }, 'Contact unblocked');
@@ -1688,6 +1957,85 @@ async function renderWebConsole() {
     try { await api(base + '/block', { method: 'POST', body: { jid: S.jid, block: true } }); toast(c.name + ' blocked. Unblock from Profile.'); } catch (e) { toast(e.message, 'err'); }
   }
 
+
+  /* ------------------------------------------------------------ search, attach, shortcuts */
+  $('#waFindInput').oninput = (e) => {
+    S.find = e.target.value;
+    paintThread(false);
+    const first = $('#waThread mark');
+    if (first) first.scrollIntoView({ block: 'center' });
+  };
+  $('#waFindInput').onkeydown = (e) => {
+    if (e.key === 'Escape') return toggleFind();
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const marks = $$('#waThread mark');
+    if (!marks.length) return;
+    S.findIdx = ((S.findIdx || 0) + (e.shiftKey ? -1 : 1) + marks.length) % marks.length;
+    marks[S.findIdx].scrollIntoView({ block: 'center' });
+  };
+  $('#waFindClose').onclick = toggleFind;
+  $('#waStarBtn').onclick = starredDialog;
+
+  // Attach: pick a file (or paste / drop an image), preview it, add a caption, send.
+  const MAX_FILE = 8 * 1024 * 1024;
+  function readDataUrl(file) {
+    return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('Could not read that file')); r.readAsDataURL(file); });
+  }
+  async function shrinkImage(file, max = 1600) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Not a readable image')); i.src = url; });
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', 0.86);
+    } finally { URL.revokeObjectURL(url); }
+  }
+  async function stageFile(file) {
+    if (!S.jid) return toast('Open a chat first', 'err');
+    if (!file) return;
+    if (file.size > MAX_FILE) return toast('That file is over the 8 MB limit', 'err');
+    let data, name = file.name || 'file', isImg = /^image\/(jpeg|png|webp)$/.test(file.type);
+    try { data = isImg && file.size > 1.2 * 1048576 ? await shrinkImage(file) : await readDataUrl(file); } catch (e) { return toast(e.message, 'err'); }
+    if (isImg && data.startsWith('data:image/jpeg') && !/\.jpe?g$/i.test(name)) name = name.replace(/\.\w+$/, '') + '.jpg';
+    const box = $('#waAttach');
+    const preview = isImg ? `<img src="${data}" alt="">` : /^video\//.test(file.type) ? `<video src="${data}" controls></video>` : `<div class="wa-attach-file">${WAI2.doc}<b>${esc(name)}</b><small>${esc(fmtSize(file.size))}</small></div>`;
+    box.hidden = false;
+    box.innerHTML = `<div class="wa-attach-card"><button class="wa-icon-btn wa-attach-x" id="waAttachX" title="Cancel">✕</button><div class="wa-attach-prev">${preview}</div><div class="wa-attach-bar"><input id="waCaption" maxlength="900" placeholder="Add a caption" autocomplete="off" /><button class="wa-send" id="waAttachSend" title="Send"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M1.100 21.800 23 12.400 1.100 3l-.1 7.300 15.600 2.100L1 14.500z"/></svg></button></div></div>`;
+    $('#waAttachX').onclick = () => { box.hidden = true; box.innerHTML = ''; };
+    const send = async () => {
+      const btn = $('#waAttachSend'); btn.disabled = true;
+      try {
+        await api(base + '/sendmedia', { method: 'POST', body: { jid: S.jid, data, name, caption: $('#waCaption').value.trim() || undefined } });
+        box.hidden = true; box.innerHTML = '';
+      } catch (er) { toast(er.message, 'err'); btn.disabled = false; }
+    };
+    $('#waAttachSend').onclick = send;
+    $('#waCaption').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } };
+    $('#waCaption').focus();
+  }
+  $('#waClipBtn').onclick = () => $('#waFile').click();
+  $('#waFile').onchange = (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; stageFile(f); };
+  $('#waText').addEventListener('paste', (e) => {
+    const f = Array.from((e.clipboardData && e.clipboardData.files) || []).find((x) => /^image\//.test(x.type));
+    if (f) { e.preventDefault(); stageFile(f); }
+  });
+  const thread = $('#waThread');
+  thread.addEventListener('dragover', (e) => { e.preventDefault(); });
+  thread.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) stageFile(f); });
+  document.addEventListener('keydown', function waKeys(e) {
+    if (!document.getElementById('waApp')) return document.removeEventListener('keydown', waKeys);
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.wa-pop,.wa-lightbox,.wa-dialog-back').forEach((x) => x.remove());
+      if (!$('#waAttach').hidden) { $('#waAttach').hidden = true; $('#waAttach').innerHTML = ''; }
+      else if (!$('#waProfile').hidden) closeProfile();
+      else $('#waMain').classList.remove('info-open');
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#waSearch').focus(); }
+  });
+
   await loadChats();
 
   // live updates
@@ -1707,6 +2055,17 @@ async function renderWebConsole() {
     if (i >= 0) S.chats.splice(i, 1);
     if (!S.q) S.chats.unshift(chat);
     paintList();
+    notifyNew({ ...d, chat });
+  });
+  webES.addEventListener('deleted', (ev) => {
+    const d = JSON.parse(ev.data);
+    const m = S.msgs.find((x) => x.id === d.id);
+    if (m) { m.deleted = true; m.text = ''; if (d.jid === S.jid) paintThread(false); }
+  });
+  webES.addEventListener('edited', (ev) => {
+    const d = JSON.parse(ev.data);
+    const m = S.msgs.find((x) => x.id === d.id);
+    if (m) { m.text = d.text; m.edited = true; if (d.jid === S.jid) paintThread(false); }
   });
   webES.addEventListener('status', (ev) => {
     const d = JSON.parse(ev.data);

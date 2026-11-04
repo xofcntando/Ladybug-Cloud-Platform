@@ -20,6 +20,14 @@ const msgs = new Map(); //  jid -> [message]
 const contacts = new Map(); // jid -> name
 let sock = null;
 let wired = false;
+const raw = new Map(); // message id -> raw WhatsApp message, only for media we may be asked to download
+const RAW_MAX = 250;
+const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
+let baileysLib = null;
+function baileys() {
+  if (!baileysLib) { try { baileysLib = require('@whiskeysockets/baileys'); } catch (e) { baileysLib = require('baileys'); } }
+  return baileysLib;
+}
 
 // ---- presence ("who is online"): live state per chat, WhatsApp-Web style
 const presences = new Map(); // key -> { state, lastSeen, ts }
@@ -109,6 +117,13 @@ function ingest(m, live) {
       sender: fromMe ? 'me' : num(m.key.participant || jid), senderName: fromMe ? null : m.pushName || null,
       status: fromMe ? 'sent' : null,
     };
+    const mm = unwrap(m.message);
+    const mediaNode = mm.imageMessage || mm.videoMessage || mm.audioMessage || mm.documentMessage || mm.stickerMessage;
+    if (mediaNode) {
+      entry.media = { mime: mediaNode.mimetype || null, size: Number(mediaNode.fileLength && mediaNode.fileLength.toNumber ? mediaNode.fileLength.toNumber() : mediaNode.fileLength) || null, seconds: mediaNode.seconds || null, name: mediaNode.fileName || null };
+      raw.set(m.key.id, m);
+      if (raw.size > RAW_MAX) raw.delete(raw.keys().next().value);
+    }
     list.push(entry);
     list.sort((a, b) => a.ts - b.ts);
     if (list.length > MAX_PER_CHAT) list.splice(0, list.length - MAX_PER_CHAT);
@@ -119,6 +134,24 @@ function ingest(m, live) {
     if (live && !fromMe && d.type !== 'reaction') c.unread = (c.unread || 0) + 1;
     return { jid, entry, chat: chatView(c) };
   } catch (e) { return null; }
+}
+
+
+/** "Delete for everyone" and "edit" arrive as protocol messages. Update our copy and tell the dashboard. */
+function applyProtocol(m) {
+  try {
+    const pm = m.message && (m.message.protocolMessage || (m.message.ephemeralMessage && m.message.ephemeralMessage.message && m.message.ephemeralMessage.message.protocolMessage));
+    if (!pm || !pm.key) return false;
+    const jid = m.key.remoteJid;
+    const e = (msgs.get(jid) || []).find((x) => x.id === pm.key.id);
+    if (!e) return true;
+    if (pm.type === 0) { e.deleted = true; e.text = ''; e.media = null; raw.delete(e.id); emit('deleted', { jid, id: e.id }); }
+    else if (pm.type === 14 && pm.editedMessage) {
+      const d = describe(pm.editedMessage);
+      if (d) { e.text = String(d.text || '').slice(0, MAX_TEXT); e.edited = true; emit('edited', { jid, id: e.id, text: e.text }); }
+    }
+    return true;
+  } catch (err) { return false; }
 }
 
 function emit(event, data) { try { process.send({ type: 'wa', event, ...data }); } catch (e) { /* parent gone */ } }
@@ -173,6 +206,7 @@ function wire(s) {
   });
   s.ev.on('messages.upsert', ({ messages, type }) => {
     for (const m of messages || []) {
+      if (applyProtocol(m)) continue;
       const r = ingest(m, type === 'notify');
       if (r) {
         emit('message', r);
@@ -313,6 +347,85 @@ const handlers = {
     if (!hit) return { exists: false };
     ensureChat(hit.jid);
     return { exists: true, jid: hit.jid };
+  },
+  /** Download an incoming (or our own) photo / video / audio / document so the browser can show it. */
+  async media({ jid, id } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const m = raw.get(String(id));
+    const e = (msgs.get(jid) || []).find((x) => x.id === String(id));
+    if (!m || !e || !e.media) throw new Error('This file is no longer available. Only recent media can be opened.');
+    if (e.media.size && e.media.size > MEDIA_MAX_BYTES) throw new Error(`File is too large to preview here (${Math.round(e.media.size / 1048576)} MB, limit 8 MB)`);
+    const { downloadMediaMessage } = baileys();
+    const buf = await downloadMediaMessage(m, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage });
+    if (!buf || !buf.length) throw new Error('Could not download this file');
+    if (buf.length > MEDIA_MAX_BYTES) throw new Error('File is too large to preview here (limit 8 MB)');
+    const mime = e.media.mime || 'application/octet-stream';
+    return { mime, name: e.media.name || null, data: `data:${mime};base64,${buf.toString('base64')}` };
+  },
+  /** Send a photo, video, audio file or document picked in the browser. */
+  async sendMedia({ jid, data, name, caption } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const mt = /^data:([a-zA-Z0-9.+/-]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(data || ''));
+    if (!mt) throw new Error('Invalid file');
+    const mime = mt[1];
+    const buf = Buffer.from(mt[2], 'base64');
+    if (!buf.length) throw new Error('File is empty');
+    if (buf.length > MEDIA_MAX_BYTES) throw new Error('File is too large (limit 8 MB)');
+    const cap = caption ? String(caption).slice(0, 1000) : undefined;
+    const fileName = String(name || 'file').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 120);
+    let content;
+    if (/^image\/(jpeg|png|webp)$/.test(mime)) content = { image: buf, caption: cap };
+    else if (/^video\/(mp4|3gpp|quicktime)$/.test(mime)) content = { video: buf, caption: cap };
+    else if (/^audio\//.test(mime)) content = { audio: buf, mimetype: mime, ptt: false };
+    else content = { document: buf, mimetype: mime || 'application/octet-stream', fileName, caption: cap };
+    const sent = await sock.sendMessage(jid, content);
+    const r = ingest(sent, false);
+    if (r) emit('message', r);
+    return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
+  },
+  /** Delete one of OUR messages for everyone. */
+  async deleteMsg({ jid, id } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const e = (msgs.get(jid) || []).find((x) => x.id === String(id));
+    if (!e) throw new Error('Message not found');
+    if (!e.fromMe) throw new Error('You can only delete your own messages for everyone');
+    await sock.sendMessage(jid, { delete: { remoteJid: jid, id: e.id, fromMe: true, participant: isGroup(jid) ? selfJid() : undefined } });
+    e.deleted = true; e.text = ''; e.media = null; raw.delete(e.id);
+    emit('deleted', { jid, id: e.id });
+    return { ok: true };
+  },
+  /** Edit one of our text messages (WhatsApp allows this for 15 minutes). */
+  async editMsg({ jid, id, text } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const e = (msgs.get(jid) || []).find((x) => x.id === String(id));
+    if (!e || !e.fromMe) throw new Error('You can only edit your own messages');
+    if (e.type !== 'text') throw new Error('Only text messages can be edited');
+    if (Date.now() / 1000 - e.ts > 15 * 60) throw new Error('WhatsApp only allows editing within 15 minutes');
+    const body = String(text || '').trim();
+    if (!body) throw new Error('Message is empty');
+    if (body.length > MAX_TEXT) throw new Error(`Message is too long (max ${MAX_TEXT} characters)`);
+    await sock.sendMessage(jid, { text: body, edit: { remoteJid: jid, id: e.id, fromMe: true, participant: isGroup(jid) ? selfJid() : undefined } });
+    e.text = body; e.edited = true;
+    emit('edited', { jid, id: e.id, text: body });
+    return { ok: true };
+  },
+  /** Group name, description and members for the info drawer. */
+  async group({ jid } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid) || !isGroup(jid)) throw new Error('Not a group');
+    const md = await sock.groupMetadata(jid);
+    const me = num(selfJid());
+    return {
+      subject: md.subject || 'Group', desc: md.desc || '', created: md.creation || null, size: (md.participants || []).length,
+      participants: (md.participants || []).map((p) => {
+        const pn = p.phoneNumber || p.jid || p.id;
+        return { id: p.id, phone: num(pn), name: contacts.get(p.id) || contacts.get(pn) || null, admin: p.admin || null, me: num(pn) === me };
+      }).slice(0, 1024),
+    };
   },
   me() { return { me: sock && sock.user ? sock.user : null }; },
 
