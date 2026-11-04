@@ -807,9 +807,18 @@ app.get('/api/bots', requireAuth, (req, res) => {
 /**
  * Shared bot helpers (dashboard + public API). Return { code, body }.
  */
-function createBotFor(user, { name, sessionId }) {
+// WhatsApp console accounts: a user can link up to this many numbers from the web client.
+const WEB_ACCOUNT_LIMIT = Math.max(1, parseInt(process.env.WEB_ACCOUNT_LIMIT || '12', 10) || 12);
+// Set WEB_LINK_RESPECT_BOT_LIMIT=1 to make console links obey the paid bot-slot limit again.
+const WEB_RESPECT_BOT_LIMIT = process.env.WEB_LINK_RESPECT_BOT_LIMIT === '1';
+
+function createBotFor(user, { name, sessionId }, opts = {}) {
   const owned = db.botsForUser(user.id);
-  const limit = billing.botLimitFor(user);
+  const planLimit = billing.botLimitFor(user);
+  const limit = opts.web && !WEB_RESPECT_BOT_LIMIT ? Math.max(planLimit, WEB_ACCOUNT_LIMIT) : planLimit;
+  if (opts.web && owned.length >= WEB_ACCOUNT_LIMIT) {
+    return { code: 403, body: { error: `You can link up to ${WEB_ACCOUNT_LIMIT} WhatsApp accounts. Remove one to link another.`, limit: WEB_ACCOUNT_LIMIT } };
+  }
   if (owned.length >= limit) {
     return {
       code: 403,
@@ -1153,6 +1162,9 @@ app.post('/api/bots/:id/web/sendvoice', requireAuth, (req, res) => { const b = o
 app.get('/api/bots/:id/web/search', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.search(b, req, res); });
 app.get('/api/bots/:id/web/media', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.media(b, req, res); });
 app.post('/api/bots/:id/web/sendmedia', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendMedia(b, req, res); });
+app.post('/api/bots/:id/web/sendpoll', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.rich('sendPoll', ['jid', 'name', 'options', 'multi'])(b, req, res); });
+app.post('/api/bots/:id/web/sendlocation', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.rich('sendLocation', ['jid', 'lat', 'lng', 'name'])(b, req, res); });
+app.post('/api/bots/:id/web/sendcontact', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.rich('sendContact', ['jid', 'name', 'phone'])(b, req, res); });
 const scheduled = require('./lib/scheduled');
 scheduled.start();
 app.get('/api/bots/:id/web/scheduled', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) res.json({ items: scheduled.list(b.id, req.query.jid ? String(req.query.jid) : undefined) }); });
@@ -1166,7 +1178,7 @@ app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBo
 
 // ---------------------------------------------------------------- linked devices (restore)
 /** Attach a saved device to an existing bot (botId) or to a brand new bot (name). Returns { code, body }. */
-function restoreDeviceFor(user, dev, { botId, name, force } = {}) {
+function restoreDeviceFor(user, dev, { botId, name, force } = {}, opts = {}) {
   if (dev.status === 'logged_out' && !force) {
     return { code: 409, body: { error: 'WhatsApp logged this device out, so its saved session no longer works. Pair the number again to link it.', code: 'device_logged_out' } };
   }
@@ -1177,7 +1189,7 @@ function restoreDeviceFor(user, dev, { botId, name, force } = {}) {
     if (bot.sessionId === dev.sessionId) return { code: 200, body: { ok: true, bot: botView(bot), note: 'That bot already uses this device.' } };
     r = patchBotFor(bot, { sessionId: dev.sessionId });
   } else {
-    r = createBotFor(user, { name: name || dev.label || `Bot ${dev.number}`, sessionId: dev.sessionId });
+    r = createBotFor(user, { name: name || dev.label || `Bot ${dev.number}`, sessionId: dev.sessionId }, opts);
   }
   if (r.code === 200) devices.touch(user, dev.id, r.body.bot && r.body.bot.id);
   return r;
@@ -1212,6 +1224,62 @@ app.patch('/api/devices/:id', requireAuth, (req, res) => {
 app.delete('/api/devices/:id', requireAuth, (req, res) => {
   if (!devices.remove(req.user, req.params.id)) return res.status(404).json({ error: 'Device not found' });
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------- WhatsApp console accounts (link up to 12 numbers)
+function accountView(b) {
+  const info = b.sessionId ? sessioninfo.decode(b.sessionId) : null;
+  const v = botView(b);
+  return {
+    id: b.id,
+    name: b.name,
+    number: info && info.number ? info.number : null,
+    waName: info && info.name ? info.name : null,
+    status: v.status,
+    running: v.running,
+    suspendedReason: v.suspendedReason || null,
+    createdAt: b.createdAt,
+  };
+}
+
+app.get('/api/web/accounts', requireAuth, (req, res) => {
+  const mine = db.botsForUser(req.user.id);
+  const used = new Set(mine.map((b) => b.sessionId));
+  const saved = (req.user.linkedDevices || [])
+    .filter((d) => d.status !== 'logged_out' && !used.has(d.sessionId))
+    .map((d) => devices.view(d));
+  res.json({ accounts: mine.map(accountView), saved, max: WEB_ACCOUNT_LIMIT });
+});
+
+// Finish a pairing job started with POST /api/session/pair: create the bot, start it, return the account.
+app.post('/api/web/accounts/link', requireAuth, (req, res) => {
+  const b = req.body || {};
+  const job = pairOwners.get(String(b.jobId)) === req.user.id ? sessiongen.get(String(b.jobId)) : null;
+  if (!job) return res.status(404).json({ error: 'Pairing job not found or expired. Start again.' });
+  if (job.status !== 'ready' || !job.sessionId) return res.status(409).json({ error: 'WhatsApp has not confirmed the link yet.' });
+  const existing = db.listBots().find((x) => x.sessionId === job.sessionId);
+  if (existing && existing.userId === req.user.id) {
+    return res.json({ ok: true, account: accountView(existing), note: 'This number was already linked.' });
+  }
+  const info = sessioninfo.decode(job.sessionId);
+  const name = String(b.name || (info && info.name) || (info && info.number && '+' + info.number) || 'WhatsApp').trim().slice(0, 40);
+  const r = createBotFor(req.user, { name, sessionId: job.sessionId }, { web: true });
+  if (r.code !== 200) return res.status(r.code).json(r.body);
+  const bot = db.findBotById(r.body.bot.id);
+  const s = startBotFor(bot, req.user);
+  sessiongen.cancel(job.id);
+  res.json({ ok: true, account: accountView(db.findBotById(bot.id)), start: s.code === 200 ? 'started' : (s.body && s.body.error) || 'not started' });
+});
+
+// Bring a previously linked number back without pairing again.
+app.post('/api/web/accounts/restore', requireAuth, (req, res) => {
+  const dev = devices.find(req.user, String((req.body || {}).deviceId || ''));
+  if (!dev) return res.status(404).json({ error: 'Saved device not found' });
+  const r = restoreDeviceFor(req.user, dev, { name: (req.body || {}).name }, { web: true });
+  if (r.code !== 200) return res.status(r.code).json(r.body);
+  const bot = db.findBotById(r.body.bot.id);
+  const s = startBotFor(bot, req.user);
+  res.json({ ok: true, account: accountView(db.findBotById(bot.id)), start: s.code === 200 ? 'started' : (s.body && s.body.error) || 'not started' });
 });
 
 // One-off backfill: every existing bot's number becomes a restorable linked device.

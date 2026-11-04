@@ -1652,12 +1652,13 @@ async function renderWebConsole() {
       if (m.deleted) inner = '<span class="wa-deleted">This message was deleted</span>';
       else {
         const body = m.text ? hl(m.text) : '';
-        const media = KNOWN_MEDIA.includes(m.type) ? mediaHtml(m) : (icon[m.type] ? `<span class="wa-media">${icon[m.type]} ${esc(m.type)}</span>` : '');
-        const showText = m.type !== 'document' && m.text;
-        inner = `${media}${media && showText ? '<br>' : ''}${showText ? body : ''}`;
+        const rp = window.WARICH ? WARICH.parts(m) : { top: '', rich: '', isRich: false, link: '', reacts: '' };
+        const media = KNOWN_MEDIA.includes(m.type) ? mediaHtml(m) : (rp.isRich ? rp.rich : (icon[m.type] ? `<span class="wa-media">${icon[m.type]} ${esc(m.type)}</span>` : ''));
+        const showText = m.type !== 'document' && !rp.isRich && m.text;
+        inner = `${rp.top}${media}${media && showText ? '<br>' : ''}${showText ? body : ''}${rp.link}${rp.reacts}`;
         if (S.find && m.text && m.text.toLowerCase().includes(S.find.toLowerCase())) hits += 1;
       }
-      return `${sep}<div class="wa-msg ${m.fromMe ? 'me' : 'them'}${m.edited || P.starred[m.id] ? ' wide' : ''}" data-id="${esc(m.id)}">${menu}${who}${inner}<div class="wa-meta">${star}${edited}${hhmm(m.ts)} ${tick(m)}</div></div>`;
+      return `${sep}<div class="wa-msg ${m.fromMe ? 'me' : 'them'}${m.edited || P.starred[m.id] || m.quoted || m.link || m.poll || m.location || m.contact ? ' wide' : ''}${m.reactions && Object.keys(m.reactions).length ? ' has-reacts' : ''}" data-id="${esc(m.id)}">${menu}${who}${inner}<div class="wa-meta">${star}${edited}${hhmm(m.ts)} ${tick(m)}</div></div>`;
     }).join('') || '<div class="chat-empty">No messages yet.</div>';
     const cnt = $('#waFindCount'); if (cnt) cnt.textContent = S.find ? hits + ' found' : '';
     t.querySelectorAll('[data-open]').forEach((el) => { el.onclick = () => openMedia(el.dataset.open); });
@@ -1683,7 +1684,6 @@ async function renderWebConsole() {
     const fresh = Date.now() / 1000 - m.ts < 15 * 60;
     popMenu(x, y, [
       { label: 'Reply', run: () => setReply(m) },
-      { label: 'React 👍', run: async () => { try { await api(base + '/send', { method: 'POST', body: { jid: S.jid, quotedId: m.id, react: '👍' } }); toast('Reacted'); } catch (er) { toast(er.message, 'err'); } } },
       m.text ? { label: 'Copy text', run: () => { try { navigator.clipboard.writeText(m.text); toast('Copied'); } catch (e) { /* ignore */ } } } : null,
       m.type === 'text' ? { label: 'Forward', run: () => forwardDialog(m) } : null,
       { label: P.starred[m.id] ? 'Unstar' : 'Star', run: () => { if (P.starred[m.id]) delete P.starred[m.id]; else P.starred[m.id] = { jid: S.jid, id: m.id, text: m.text || m.type, ts: m.ts, fromMe: m.fromMe, chat: (S.chat && S.chat.name) || '' }; savePrefs(); paintThread(false); } },
@@ -1691,6 +1691,7 @@ async function renderWebConsole() {
       m.fromMe && m.type === 'text' && fresh ? { label: 'Edit', run: () => editDialog(m) } : null,
       m.fromMe ? { label: 'Delete for everyone', danger: true, run: async () => { if (!confirm('Delete this message for everyone?')) return; try { await api(base + '/delete', { method: 'POST', body: { jid: S.jid, id: m.id } }); m.deleted = true; m.text = ''; paintThread(false); } catch (er) { toast(er.message, 'err'); } } } : null,
     ]);
+    if (window.WARICH) WARICH.addReactionRow(m);
   }
 
   function dialog(html) {
@@ -2032,7 +2033,7 @@ async function renderWebConsole() {
     $('#waCaption').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } };
     $('#waCaption').focus();
   }
-  $('#waClipBtn').onclick = () => $('#waFile').click();
+  $('#waClipBtn').onclick = (e) => { e.stopPropagation(); if (window.WARICH) WARICH.attachMenu($('#waClipBtn'), () => $('#waFile').click()); else $('#waFile').click(); };
   $('#waFile').onchange = (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; stageFile(f); };
   $('#waText').addEventListener('paste', (e) => {
     const f = Array.from((e.clipboardData && e.clipboardData.files) || []).find((x) => /^image\//.test(x.type));
@@ -2056,6 +2057,14 @@ async function renderWebConsole() {
     try { WAX.init({ S, base, bot, api, toast, esc, $, waApp, P, savePrefs, MEDIA, paintThread, paintList, setReply, openChat, dialog, popMenu, fetchMedia, hhmm }); }
     catch (e) { console.error('[wa-extras]', e); }
   }
+  if (window.WARICH) {
+    try { WARICH.init({ S, base, api, toast, dialog, popMenu, setReply, openChat, loadChats, paintThread }); }
+    catch (e) { console.error('[wa-rich]', e); }
+  }
+  if (window.WAACC) {
+    try { WAACC.init({ bot, api, toast, esc, dialog }); }
+    catch (e) { console.error('[wa-accounts]', e); }
+  }
   await loadChats();
 
   // live updates
@@ -2070,12 +2079,19 @@ async function renderWebConsole() {
     if (d.jid === S.jid) {
       if (!S.msgs.some((m) => m.id === d.entry.id)) S.msgs.push(d.entry);
       paintThread(d.entry.fromMe);
+      if (window.WARICH && d.entry.type !== 'reaction') WARICH.noteIncoming(d.entry.fromMe);
       if (!d.entry.fromMe) { chat.unread = 0; api(base + '/read', { method: 'POST', body: { jid: S.jid } }).catch(() => {}); }
     }
     if (i >= 0) S.chats.splice(i, 1);
     if (!S.q) S.chats.unshift(chat);
     paintList();
     notifyNew({ ...d, chat });
+  });
+  webES.addEventListener('reactions', (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.jid !== S.jid) return;
+    const m = S.msgs.find((x) => x.id === d.id);
+    if (m) { m.reactions = d.reactions; paintThread(false); }
   });
   webES.addEventListener('deleted', (ev) => {
     const d = JSON.parse(ev.data);

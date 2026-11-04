@@ -93,6 +93,8 @@ function describe(message) {
   if (m.stickerMessage) return { type: 'sticker', text: '' };
   if (m.contactMessage) return { type: 'contact', text: m.contactMessage.displayName || '' };
   if (m.locationMessage) return { type: 'location', text: m.locationMessage.name || '' };
+  if (m.liveLocationMessage) return { type: 'location', text: m.liveLocationMessage.caption || 'Live location' };
+  if (m.contactsArrayMessage) return { type: 'contact', text: m.contactsArrayMessage.displayName || 'Contacts' };
   if (m.reactionMessage) return { type: 'reaction', text: m.reactionMessage.text || '' };
   if (m.pollCreationMessage || m.pollCreationMessageV3) return { type: 'poll', text: (m.pollCreationMessage || m.pollCreationMessageV3).name || '' };
   if (m.protocolMessage || m.senderKeyDistributionMessage) return null;
@@ -133,6 +135,73 @@ function ensureChat(jid) {
   return c;
 }
 
+/* ---- rich message data: reply context, polls, locations, contact cards, link previews, reactions ---- */
+function ctxInfo(mm) {
+  for (const k of ['extendedTextMessage', 'imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage', 'locationMessage', 'contactMessage', 'pollCreationMessage', 'pollCreationMessageV3']) {
+    if (mm[k] && mm[k].contextInfo) return mm[k].contextInfo;
+  }
+  return null;
+}
+function parseVcard(v) {
+  const phones = [];
+  let name = '';
+  for (const line of String(v || '').split(/\r?\n/)) {
+    if (/^FN[:;]/i.test(line)) name = line.slice(line.indexOf(':') + 1).trim();
+    const w = /waid=(\d{5,20})/i.exec(line);
+    if (/^(item\d+\.)?TEL/i.test(line)) {
+      const val = line.slice(line.lastIndexOf(':') + 1).trim();
+      const digits = (w && w[1]) || val.replace(/[^\d+]/g, '');
+      if (digits) phones.push(digits.startsWith('+') || w ? (digits.startsWith('+') ? digits : '+' + digits) : digits);
+    }
+  }
+  return { name, phones: [...new Set(phones)].slice(0, 5) };
+}
+const b64 = (th) => { try { const x = typeof th === 'string' ? th : Buffer.from(th).toString('base64'); return x.length > 20 && x.length < 40000 ? `data:image/jpeg;base64,${x}` : null; } catch (e) { return null; } };
+
+function enrich(entry, mm, jid, fromMe, m) {
+  try {
+    const ci = ctxInfo(mm);
+    if (ci && ci.quotedMessage && ci.stanzaId) {
+      const qd = describe(ci.quotedMessage) || { type: 'other', text: '' };
+      entry.quoted = { id: ci.stanzaId, sender: num(ci.participant || ''), mine: !!(ci.participant && sock && sock.user && num(ci.participant) === num(sock.user.id)), type: qd.type, text: String(qd.text || '').slice(0, 160) };
+    }
+    if (ci && ci.isForwarded) entry.forwarded = true;
+    if (mm.locationMessage) {
+      const l = mm.locationMessage;
+      entry.location = { lat: Number(l.degreesLatitude) || 0, lng: Number(l.degreesLongitude) || 0, name: l.name || null, address: l.address || null, live: false };
+    }
+    if (mm.liveLocationMessage) {
+      const l = mm.liveLocationMessage;
+      entry.type = 'location'; entry.text = entry.text || 'Live location';
+      entry.location = { lat: Number(l.degreesLatitude) || 0, lng: Number(l.degreesLongitude) || 0, name: l.caption || null, address: null, live: true };
+    }
+    if (mm.contactMessage) entry.contact = Object.assign({ display: mm.contactMessage.displayName || '' }, parseVcard(mm.contactMessage.vcard));
+    if (mm.contactsArrayMessage) {
+      const cs = (mm.contactsArrayMessage.contacts || []).slice(0, 5).map((c) => Object.assign({ display: c.displayName || '' }, parseVcard(c.vcard)));
+      if (cs.length) { entry.type = 'contact'; entry.text = entry.text || mm.contactsArrayMessage.displayName || cs[0].display; entry.contact = cs[0]; entry.contacts = cs; }
+    }
+    const poll = mm.pollCreationMessage || mm.pollCreationMessageV3;
+    if (poll) entry.poll = { name: poll.name || '', options: (poll.options || []).map((o) => String(o.optionName || '')).slice(0, 12), multi: Number(poll.selectableOptionsCount) !== 1 };
+    const et = mm.extendedTextMessage;
+    if (et && (et.matchedText || et.canonicalUrl) && (et.title || et.description)) {
+      entry.link = { url: String(et.canonicalUrl || et.matchedText).slice(0, 500), title: String(et.title || '').slice(0, 160), desc: String(et.description || '').slice(0, 240), thumb: et.jpegThumbnail ? b64(et.jpegThumbnail) : null };
+    }
+    if (mm.reactionMessage && mm.reactionMessage.key && mm.reactionMessage.key.id) {
+      entry.reactTo = mm.reactionMessage.key.id;
+      applyReaction(jid, entry.reactTo, fromMe ? 'me' : num(m.key.participant || jid), mm.reactionMessage.text || '');
+    }
+  } catch (e) { /* enrichment is best effort */ }
+}
+
+function applyReaction(jid, targetId, who, emoji) {
+  const list = msgs.get(jid) || [];
+  const t = list.find((x) => x.id === targetId);
+  if (!t) return;
+  t.reactions = t.reactions || {};
+  if (emoji) t.reactions[who] = String(emoji).slice(0, 8); else delete t.reactions[who];
+  emit('reactions', { jid, id: targetId, reactions: t.reactions });
+}
+
 function ingest(m, live) {
   try {
     const jid = m.key && m.key.remoteJid;
@@ -159,6 +228,7 @@ function ingest(m, live) {
       raw.set(m.key.id, m);
       if (raw.size > RAW_MAX) raw.delete(raw.keys().next().value);
     }
+    enrich(entry, mm, jid, fromMe, m);
     list.push(entry);
     list.sort((a, b) => a.ts - b.ts);
     if (list.length > MAX_PER_CHAT) list.splice(0, list.length - MAX_PER_CHAT);
@@ -350,6 +420,7 @@ const handlers = {
       const target = list.find((m) => m.id === quotedId);
       if (!target) throw new Error('Message to react to was not found');
       await sock.sendMessage(jid, { react: { text: String(react).slice(0, 8), key: { remoteJid: jid, id: target.id, fromMe: target.fromMe, participant: isGroup(jid) && !target.fromMe ? target.sender + '@s.whatsapp.net' : undefined } } });
+      applyReaction(jid, target.id, 'me', String(react).slice(0, 8));
       return { ok: true };
     }
     const body = String(text || '').trim();
@@ -366,6 +437,44 @@ const handlers = {
       if (ids.length) content.mentions = ids.map((x) => x + '@s.whatsapp.net');
     }
     const sent = await sock.sendMessage(jid, content, opts);
+    const r = ingest(sent, false);
+    if (r) emit('message', r);
+    return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
+  },
+  /** Poll: 2-12 options, single or multiple choice. */
+  async sendPoll({ jid, name, options, multi } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const q = String(name || '').trim().slice(0, 200);
+    const opts = [...new Set((Array.isArray(options) ? options : []).map((o) => String(o || '').trim().slice(0, 100)).filter(Boolean))].slice(0, 12);
+    if (!q) throw new Error('Write a question for the poll');
+    if (opts.length < 2) throw new Error('A poll needs at least 2 different options');
+    const sent = await sock.sendMessage(jid, { poll: { name: q, values: opts, selectableCount: multi ? opts.length : 1 } });
+    const r = ingest(sent, false);
+    if (r) emit('message', r);
+    return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
+  },
+  /** Location pin from the browser's coordinates. */
+  async sendLocation({ jid, lat, lng, name } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const la = Number(lat), lo = Number(lng);
+    if (!isFinite(la) || !isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) throw new Error('Invalid coordinates');
+    const sent = await sock.sendMessage(jid, { location: { degreesLatitude: la, degreesLongitude: lo, name: name ? String(name).slice(0, 100) : undefined } });
+    const r = ingest(sent, false);
+    if (r) emit('message', r);
+    return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
+  },
+  /** Contact card (vCard) for one person. */
+  async sendContact({ jid, name, phone } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const nm = String(name || '').replace(/[\r\n;]/g, ' ').trim().slice(0, 60);
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!nm) throw new Error('Contact name is required');
+    if (digits.length < 7 || digits.length > 15) throw new Error('Enter the number with country code');
+    const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${nm}\nTEL;type=CELL;type=VOICE;waid=${digits}:+${digits}\nEND:VCARD`;
+    const sent = await sock.sendMessage(jid, { contacts: { displayName: nm, contacts: [{ displayName: nm, vcard }] } });
     const r = ingest(sent, false);
     if (r) emit('message', r);
     return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
