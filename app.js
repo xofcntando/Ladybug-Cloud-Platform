@@ -48,7 +48,9 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(securityHeaders);
 app.use(compression());
-app.use(express.json({ limit: '2mb' }));
+const jsonSmall = express.json({ limit: '2mb' });
+const jsonBig = express.json({ limit: '13mb' }); // photos / files sent from the WhatsApp client (8 MB file = ~11 MB as base64)
+app.use((req, res, next) => (/\/web\/sendmedia$/.test(req.path) ? jsonBig : jsonSmall)(req, res, next));
 app.use(express.urlencoded({ extended: true }));
 // Login sessions never expire: they are stored on disk (survive restarts and
 // redeploys), the signing secret is stable, and the cookie lasts ~10 years and
@@ -1147,6 +1149,11 @@ app.post('/api/bots/:id/web/privacy', requireAuth, (req, res) => { const b = own
 app.get('/api/bots/:id/web/blocklist', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.blocklist(b, req, res); });
 app.post('/api/bots/:id/web/block', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.block(b, req, res); });
 app.post('/api/bots/:id/web/disappearing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.disappearing(b, req, res); });
+app.get('/api/bots/:id/web/media', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.media(b, req, res); });
+app.post('/api/bots/:id/web/sendmedia', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendMedia(b, req, res); });
+app.post('/api/bots/:id/web/delete', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deleteMsg(b, req, res); });
+app.post('/api/bots/:id/web/edit', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.editMsg(b, req, res); });
+app.get('/api/bots/:id/web/group', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.group(b, req, res); });
 app.get('/api/bots/:id/web/info', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.info(b, req, res); });
 app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.stream(b, req, res, req.user.id); });
 
