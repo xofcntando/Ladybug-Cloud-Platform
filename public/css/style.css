@@ -1300,3 +1300,134 @@ body[data-page="/web"] { overflow: hidden; }
 .wa-app .wa-thumb-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); background: rgba(11,20,26,.72); color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; white-space: nowrap; }
 .wa-app .wa-thumb-badge.err { background: rgba(160,40,40,.85); }
 .wa-app .wa-thumb-err { display: block; margin-top: 3px; max-width: 240px; color: #ff9b9b; font-size: 12px; line-height: 1.3; }
+
+/* =====================================================================
+   Ladybug Chat extras: themes, wallpapers, voice notes, formatting, suggestions
+   ===================================================================== */
+.wa-app [hidden] { display: none !important; }
+.wa-app .wa-main { background-color: var(--wa-chat-bg); background-image: var(--wa-wp, none); background-size: var(--wa-wp-size, cover); background-position: center; }
+.wa-app .wa-msg { font-size: var(--wa-msg-size, 14.2px); border-radius: var(--wa-radius, 7.5px); line-height: 1.38; }
+.wa-app .wa-msg.me { color: var(--wa-out-ink, var(--wa-text)); }
+.wa-app .wa-msg.them { color: var(--wa-in-ink, var(--wa-text)); }
+.wa-app .wa-badge { color: var(--wa-accent-ink, #0b141a); }
+.wa-app .wa-send, .wa-app .wa-rec-send { background: var(--wa-accent); color: #fff; }
+.wa-app .wa-tabs button.on { color: var(--wa-accent-2); background: color-mix(in srgb, var(--wa-accent) 22%, transparent); }
+.wa-app[data-theme="light"] .wa-tabs button.on { color: var(--wa-accent); background: color-mix(in srgb, var(--wa-accent) 16%, transparent); }
+.wa-app .wa-empty { border-bottom-color: var(--wa-accent); }
+.wa-app.wa-compact .wa-thread { gap: 0; }
+.wa-app.wa-compact .wa-msg { padding: 3px 7px 3px 8px; }
+.wa-app.wa-compact .wa-chat { height: 60px; }
+.wa-app.wa-compact .wa-meta { margin-top: 0; }
+
+/* branding */
+.wa-rail-logo { width: 40px; height: 40px; border-radius: 11px; margin-bottom: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.wa-brand-logo { width: 28px; height: 28px; border-radius: 8px; align-self: center; margin-right: 2px; }
+.wa-app .wa-empty-logo { width: 112px; height: 112px; border-radius: 28px; object-fit: contain; box-shadow: 0 10px 34px rgba(179,0,27,.35); }
+
+/* formatted text */
+.wa-app .wa-msg a { color: var(--wa-link); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+.wa-app .wa-msg del { opacity: .85; }
+.wa-app .wa-msg code.wa-mono, .wa-app .wa-msg pre.wa-code { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: .88em; background: rgba(127,127,127,.18); border-radius: 4px; padding: 1px 5px; }
+.wa-app .wa-msg pre.wa-code { display: block; padding: 7px 9px; margin: 3px 0; white-space: pre-wrap; word-break: break-word; }
+.wa-app .wa-mention { color: var(--wa-link); font-weight: 500; background: color-mix(in srgb, var(--wa-link) 14%, transparent); border-radius: 4px; padding: 0 3px; }
+.wa-app .wa-flash { animation: waflash 2s ease-out; }
+@keyframes waflash { 0%, 40% { box-shadow: 0 0 0 3px var(--wa-accent-2); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+/* emoji picker */
+.wa-emoji-pop.wa-emoji-big { display: block; width: 340px; padding: 0; overflow: hidden; }
+.wa-emoji-tabs { display: flex; gap: 2px; padding: 6px 6px 0; border-bottom: 1px solid var(--wa-line); overflow-x: auto; scrollbar-width: none; }
+.wa-emoji-tabs button { flex: none; font-size: 19px; width: 38px; height: 36px; border-radius: 8px 8px 0 0; opacity: .6; border-bottom: 2px solid transparent; }
+.wa-emoji-tabs button.on { opacity: 1; border-bottom-color: var(--wa-accent-2); }
+.wa-emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px; padding: 8px; max-height: 250px; overflow-y: auto; scrollbar-width: thin; }
+.wa-emoji-grid button { font-size: 22px; height: 36px; border-radius: 8px; }
+.wa-emoji-grid button:hover { background: var(--wa-active); }
+.wa-emoji-none { grid-column: 1 / -1; padding: 24px 8px; text-align: center; color: var(--wa-muted); font-size: 13px; }
+
+/* composer: mic, format bar, suggestions */
+.wa-app .wa-compose { position: relative; }
+.wa-app .wa-mic { background: var(--wa-accent); }
+.wa-fmtbar { position: absolute; left: 62px; bottom: calc(100% + 6px); display: flex; gap: 2px; padding: 4px; background: var(--wa-panel); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.35); z-index: 12; }
+.wa-fmtbar button { width: 34px; height: 32px; border-radius: 7px; font-size: 15px; }
+.wa-fmtbar button:hover { background: var(--wa-active); }
+.wa-sugbox { position: absolute; left: 62px; right: 70px; bottom: calc(100% + 6px); max-height: 280px; overflow-y: auto; background: var(--wa-panel); border-radius: 10px; box-shadow: 0 6px 28px rgba(0,0,0,.4); z-index: 13; padding: 4px 0; }
+.wa-sug { display: flex; gap: 12px; align-items: baseline; padding: 8px 16px; cursor: pointer; }
+.wa-sug b { font-weight: 600; flex: none; }
+.wa-sug span { color: var(--wa-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-sug.on, .wa-sug:hover { background: var(--wa-active); }
+
+/* voice recorder */
+.wa-compose.recording > *:not(.wa-rec) { display: none !important; }
+.wa-rec { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.wa-rec-dot { width: 11px; height: 11px; border-radius: 50%; background: #ef4444; animation: warec 1.1s ease-in-out infinite; flex: none; }
+@keyframes warec { 50% { opacity: .25; } }
+.wa-rec-time { font-variant-numeric: tabular-nums; min-width: 38px; color: var(--wa-text); }
+.wa-rec-cv { flex: 1; min-width: 0; height: 40px; width: 100%; }
+.wa-rec-x { color: #ef4444 !important; }
+
+/* voice player */
+.wa-voice { display: flex; align-items: center; gap: 10px; min-width: 238px; padding: 2px 0 4px; }
+.wa-voice .wa-vplay { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex: none; background: color-mix(in srgb, currentColor 14%, transparent); }
+.wa-voice .wa-vwave { flex: 1; height: 30px; display: flex; align-items: center; gap: 2px; cursor: pointer; min-width: 110px; }
+.wa-voice .wa-vwave i { flex: 1; min-width: 2px; border-radius: 2px; background: currentColor; opacity: .32; transition: opacity .12s; }
+.wa-voice .wa-vwave i.on { opacity: 1; background: var(--wa-accent-2); }
+.wa-voice .wa-vside { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.wa-voice .wa-vtime { font-size: 11.5px; opacity: .8; font-variant-numeric: tabular-nums; }
+.wa-voice .wa-vspeed { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, currentColor 14%, transparent); }
+.wa-vspin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: wavspin .7s linear infinite; }
+@keyframes wavspin { to { transform: rotate(360deg); } }
+
+/* generic bits used by the new dialogs */
+.wa-app .wa-btn { padding: 8px 18px; border-radius: 999px; background: var(--wa-accent); color: #fff; font-weight: 600; font-size: 14px; }
+.wa-app .wa-btn.ghost { background: transparent; color: var(--wa-muted); }
+.wa-app .wa-btn.ghost:hover { background: var(--wa-active); }
+.wa-app .wa-hint { margin: 0 0 10px; font-size: 12.5px; color: var(--wa-muted); line-height: 1.45; }
+.wa-app .wa-link { color: var(--wa-link); font-size: 13px; padding: 4px 6px; }
+.wa-app .wa-link:disabled { opacity: .4; cursor: default; }
+.wa-keys { display: grid; gap: 8px; }
+.wa-keys > div { display: flex; align-items: center; gap: 14px; }
+.wa-keys kbd { min-width: 112px; text-align: center; padding: 3px 8px; border-radius: 6px; background: var(--wa-panel-2); font: 600 12px "JetBrains Mono", ui-monospace, monospace; }
+.wa-keys span { color: var(--wa-muted); font-size: 13.5px; }
+.wa-quick-list { display: grid; gap: 6px; margin-bottom: 12px; max-height: 240px; overflow-y: auto; }
+.wa-quick-row { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 8px; background: var(--wa-panel-2); }
+.wa-quick-row b { flex: none; color: var(--wa-accent-2); }
+.wa-quick-row span { flex: 1; min-width: 0; font-size: 13px; color: var(--wa-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-quick-row button { color: var(--wa-muted); padding: 2px 6px; }
+.wa-quick-row button:hover { color: #ef4444; }
+.wa-app .wa-dialog mark { background: color-mix(in srgb, var(--wa-accent-2) 40%, transparent); color: inherit; border-radius: 3px; }
+
+/* appearance dialog */
+.wa-dialog.wa-look-dialog { width: min(640px, 100%); max-height: 90vh; padding: 0 22px 18px; }
+.wa-look-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 18px 0 8px; background: var(--wa-panel); }
+.wa-look-head h3 { margin: 0; }
+.wa-look-dialog section { padding: 12px 0; border-top: 1px solid var(--wa-line); }
+.wa-look-dialog h4 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--wa-muted); font-weight: 600; }
+.wa-check { display: flex; align-items: center; gap: 10px; font-size: 14px; margin: 8px 0; cursor: pointer; }
+.wa-check input { accent-color: var(--wa-accent); width: 16px; height: 16px; }
+.wa-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; margin-top: 10px; }
+.wa-themes.off { opacity: .45; pointer-events: none; }
+.wa-theme { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; border-radius: 12px; border: 2px solid transparent; font-size: 12.5px; color: var(--wa-muted); }
+.wa-theme:hover { background: var(--wa-active); }
+.wa-theme.on { border-color: var(--wa-accent); color: var(--wa-text); }
+.wa-theme-prev { position: relative; display: block; width: 100%; height: 54px; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(127,127,127,.25); }
+.wa-theme-prev i { position: absolute; height: 11px; width: 44%; border-radius: 4px; }
+.wa-theme-prev i:nth-child(1) { left: 6px; top: 9px; }
+.wa-theme-prev i:nth-child(2) { right: 6px; top: 25px; }
+.wa-theme-prev b { position: absolute; right: 7px; bottom: 6px; width: 14px; height: 14px; border-radius: 50%; }
+.wa-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.wa-sw { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; box-shadow: inset 0 0 0 2px var(--wa-panel); position: relative; }
+.wa-sw.on { border-color: var(--wa-text); }
+.wa-sw-custom { display: grid; place-items: center; background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red); color: #fff; font-weight: 700; cursor: pointer; overflow: hidden; }
+.wa-sw-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.wa-row2 { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-bottom: 8px; }
+.wa-row2 label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.wa-row2 input[type=color] { width: 36px; height: 28px; border: 0; padding: 0; border-radius: 6px; background: none; cursor: pointer; }
+.wa-range { display: flex; align-items: center; gap: 12px; font-size: 14px; margin: 8px 0; }
+.wa-range input { flex: 1; accent-color: var(--wa-accent); }
+.wa-range span { width: 44px; text-align: right; color: var(--wa-muted); font-size: 12.5px; }
+.wa-wps { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 10px; }
+.wa-wp { position: relative; height: 62px; border-radius: 10px; border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(127,127,127,.3); overflow: hidden; }
+.wa-wp.on { border-color: var(--wa-accent); }
+.wa-wp span { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 4px; font-size: 11px; background: rgba(0,0,0,.45); color: #fff; text-align: center; }
+.wa-look-preview { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background-color: var(--wa-chat-bg); background-image: var(--wa-wp, none); background-size: var(--wa-wp-size, cover); background-position: center; }
+.wa-look-preview .wa-msg { max-width: 80%; }
+.wa-look-dialog .wa-dialog-act { position: sticky; bottom: -18px; padding: 12px 0 0; background: var(--wa-panel); }

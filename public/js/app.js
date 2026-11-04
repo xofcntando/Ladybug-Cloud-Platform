@@ -1481,6 +1481,7 @@ async function renderWebConsole() {
       { label: P.pinned.includes(jid) ? 'Unpin chat' : 'Pin chat', run: () => { if (!P.pinned.includes(jid) && P.pinned.length >= 3) return toast('You can pin up to 3 chats', 'err'); toggleIn(P.pinned, jid); paintList(); } },
       { label: P.archived.includes(jid) ? 'Unarchive chat' : 'Archive chat', run: () => { toggleIn(P.archived, jid); paintList(); } },
       { label: P.muted.includes(jid) ? 'Unmute notifications' : 'Mute notifications', run: () => { toggleIn(P.muted, jid); paintList(); } },
+      window.WAX ? { label: 'Export chat (.txt)', run: () => WAX.exportChat(jid) } : null,
       c.unread ? { label: 'Mark as read', run: () => { c.unread = 0; api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); paintList(); } } : null,
     ]);
   }
@@ -1569,11 +1570,11 @@ async function renderWebConsole() {
   }
 
   const hl = (text) => {
-    const safe = esc(text).replace(/\n/g, '<br>');
+    const safe = window.WAX ? WAX.fmt(esc(text)) : esc(text).replace(/\n/g, '<br>');
     const q = (S.find || '').trim();
     if (!q) return safe;
     const re = new RegExp('(' + esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-    return safe.replace(re, '<mark>$1</mark>');
+    return safe.split(/(<[^>]*>)/).map((part) => (part.startsWith('<') ? part : part.replace(re, '<mark>$1</mark>'))).join('');
   };
   function mediaHtml(m) {
     const got = MEDIA[m.id];
@@ -1585,6 +1586,7 @@ async function renderWebConsole() {
     if (m.type === 'sticker' && got) return `<img class="wa-img sticker" src="${got.data}" alt="">`;
     if (m.type === 'image' && got) return `<img class="wa-img" data-zoom="${esc(m.id)}" src="${got.data}" alt="photo">`;
     if (m.type === 'video' && got) return `<video class="wa-vid" src="${got.data}" controls preload="metadata"></video>`;
+    if (m.type === 'voice' && window.WAX) return WAX.voiceHtml(m);
     if ((m.type === 'audio' || m.type === 'voice') && got) return `<audio class="wa-aud" src="${got.data}" controls></audio>`;
     if (m.type === 'document') {
       return `<div class="wa-doc" data-open="${esc(m.id)}">${WAI2.doc}<div><b>${esc(meta.name || m.text || 'Document')}</b><small>${esc(fmtSize(meta.size))}${got ? ' · tap to save' : ' · tap to download'}</small></div></div>`;
@@ -1662,6 +1664,7 @@ async function renderWebConsole() {
     t.querySelectorAll('[data-zoom]').forEach((el) => { el.onclick = () => zoomImage(el.src); });
     t.querySelectorAll('[data-mmenu]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); const r = b.getBoundingClientRect(); msgMenu(b.dataset.mmenu, r.left - 120, r.bottom); }; });
     t.querySelectorAll('.wa-msg[data-id]').forEach((el) => { el.oncontextmenu = (e) => { e.preventDefault(); msgMenu(el.dataset.id, e.clientX, e.clientY); }; });
+    if (window.WAX) WAX.afterPaint(t);
     if (nearBottom && !S.find) t.scrollTop = t.scrollHeight;
     autoLoadImages();
   }
@@ -1755,6 +1758,7 @@ async function renderWebConsole() {
   }
 
   async function openChat(jid) {
+    if (window.WAX) WAX.beforeOpen(jid);
     S.jid = jid; S.replyTo = null; setReply(null);
     $('#waShell').classList.add('chat-open');
     $('#waMain').classList.add('has-chat');
@@ -1784,11 +1788,13 @@ async function renderWebConsole() {
   $('#waForm').onsubmit = async (e) => {
     e.preventDefault();
     const ta = $('#waText');
-    const text = ta.value.trim();
-    if (!text || !S.jid) return;
+    const raw = ta.value.trim();
+    if (!raw || !S.jid) return;
+    const prep = window.WAX ? WAX.prepareSend(raw) : { text: raw };
+    const text = prep.text;
     ta.disabled = true;
     try {
-      await api(base + '/send', { method: 'POST', body: { jid: S.jid, text, quotedId: S.replyTo ? S.replyTo.id : undefined } });
+      await api(base + '/send', { method: 'POST', body: { jid: S.jid, text, mentions: prep.mentions, quotedId: S.replyTo ? S.replyTo.id : undefined } });
       ta.value = ''; setReply(null);
     } catch (er) { toast(er.message, 'err'); }
     ta.disabled = false; ta.focus();
@@ -2046,6 +2052,10 @@ async function renderWebConsole() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#waSearch').focus(); }
   });
 
+  if (window.WAX) {
+    try { WAX.init({ S, base, bot, api, toast, esc, $, waApp, P, savePrefs, MEDIA, paintThread, paintList, setReply, openChat, dialog, popMenu, fetchMedia, hhmm }); }
+    catch (e) { console.error('[wa-extras]', e); }
+  }
   await loadChats();
 
   // live updates
