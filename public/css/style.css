@@ -939,3 +939,5 @@ pre.code-block { background: var(--surface-2); border: 1px solid var(--line); bo
 .dev-table th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 .key-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .key-row small { color: var(--muted); }
+.chip.pro { background: rgba(255, 190, 60, .14); border-color: rgba(255, 190, 60, .4); color: #ffcf6b; }
+.pass-card { border-color: rgba(255, 190, 60, .35); }
