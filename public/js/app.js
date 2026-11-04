@@ -283,7 +283,7 @@ function renderNav() {
       <a href="#/pay" class="nav-link hide-sm">Pay</a>
       <a href="#/support" class="nav-link hide-sm">Contact admin</a>
       <a href="#/settings" class="nav-link hide-sm">Settings</a>
-      <a href="#/developers" class="nav-link hide-sm">API</a>
+      <a href="#/developers" class="nav-link hide-sm">Developers</a>
       <a href="#/status" class="nav-link hide-sm">Status</a>
       ${state.user.isAdmin ? '<a href="#/admin" class="nav-link hide-sm">Admin</a>' : ''}
       <span class="nav-sep hide-sm"></span>
@@ -300,7 +300,7 @@ function renderNav() {
     el.innerHTML = `
       <a href="#/pricing" class="nav-link hide-sm">Pricing</a>
       <a href="#/status" class="nav-link hide-sm">Status</a>
-      <a href="#/developers" class="nav-link hide-sm">API</a>
+      <a href="#/developers" class="nav-link hide-sm">Developers</a>
       <a href="#/login" class="nav-link">Log in</a>
       <a href="#/register" class="btn btn-primary btn-sm">Start free trial</a>`;
   }
@@ -664,7 +664,7 @@ async function renderLanding() {
 
   <footer class="footer">
     <div class="wrap">
-      <span><b>Ladybug Cloud</b> by Ntandomods</span>
+      <span><b>Ladybug Cloud</b> by Ntandomods &middot; <a href="#/developers">Developers &amp; API</a></span>
       <span>Not affiliated with WhatsApp Inc. Use at your own risk.</span>
     </div>
   </footer>`;
@@ -1451,15 +1451,42 @@ async function renderDevelopers() {
   ];
   const methodChip = (m) => `<span class="chip ${m.startsWith('GET') && !m.includes('|') ? 'on' : ''}">${m}</span>`;
 
+  const sec = (id, title, body, extra) => `<section class="card dev-sec" id="sec-${id}" style="margin-bottom:18px"><h3>${title}</h3>${body}</section>`;
+  const note = (t) => `<p class="pay-note">${t}</p>`;
+  const step = (n, t, d) => `<div class="dev-step"><span class="dev-n">${n}</span><div><b>${t}</b><div class="pay-note" style="margin-top:3px">${d}</div></div></div>`;
+  const li = (arr) => `<ul class="dev-list">${arr.map((x) => `<li>${x}</li>`).join('')}</ul>`;
+
   $('#view').innerHTML = `
-  <div class="app"><div class="wrap">
-    <div class="app-head"><div><h1>Developer API</h1><p>Control your Ladybug bots from scripts, CI, Discord/Slack bots or your own dashboard.</p></div></div>
+  <div class="app"><div class="wrap dev-hub">
+    <div class="dev-hero">
+      <span class="chip on">API v1</span>
+      <h1>Ladybug Cloud Developers</h1>
+      <p>Build on top of your WhatsApp bots: start and stop them, onboard customers, stream logs and react to events from your own code.</p>
+      <div class="dev-powered"><img src="/img/logo.png" alt="" /> <span>APIs powered by <b>Ntandomods Developers</b></span></div>
+      <div class="dev-jump">
+        <button class="btn btn-sm" data-jump="start">Get started</button>
+        <button class="btn btn-sm" data-jump="keys">API keys</button>
+        <button class="btn btn-sm" data-jump="guides">Guides</button>
+        <button class="btn btn-sm" data-jump="safety">Avoid WhatsApp bans</button>
+        <button class="btn btn-sm" data-jump="reference">Reference</button>
+        <button class="btn btn-sm" data-jump="faq">FAQ</button>
+      </div>
+    </div>
     <div id="passCard"></div>
 
-    <div class="card" id="keysCard" style="margin-bottom:18px">
-      <h3>API keys</h3>
-      ${state.user ? `
-        <p class="pay-note">Keys are shown once, so copy yours straight away. Treat a key like a password: anyone holding a <b>write</b> key can control your bots.</p>
+    ${sec('start', 'Get started in 5 minutes', `
+      ${step(1, 'Create an account', state.user ? 'You are signed in as <b>' + esc(state.user.username) + '</b>.' : '<a href="#/register">Sign up free</a> or <a href="#/login">log in</a>. Every account can use the free read-only API.')}
+      ${step(2, 'Create an API key', 'Use the <b>API keys</b> section below. Copy it straight away, it is shown once. Treat it like a password and never put it in front-end code.')}
+      ${step(3, 'Make your first call', 'Send the key as a bearer token. Replace <code>lbk_your_key_here</code> with yours.')}
+      ${code(`curl ${base}/me \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
+      ${code(`# Python\nimport os, requests\nH = {"Authorization": "Bearer " + os.environ["LADYBUG_KEY"]}\nprint(requests.get("${base}/bots", headers=H).json())`)}
+      ${code(`// Node 18+\nconst r = await fetch("${base}/bots", { headers: { Authorization: "Bearer " + process.env.LADYBUG_KEY } });\nconsole.log((await r.json()).bots);`)}
+      ${step(4, 'Need to control bots? Get the API Pass', 'Free keys are read-only. The <a href="#/pay?buy=api">API Pass</a> unlocks write keys: start/stop/restart, create and delete bots, pairing, env vars, webhooks and live logs.')}
+      ${step(5, 'Handle errors and limits', 'Every error is JSON like <code>{"error":"message"}</code>. Back off when you get a <code>429</code> and honour the <code>Retry-After</code> header.')}
+    `)}
+
+    ${sec('keys', 'API keys', state.user ? `
+        ${note('Keys are shown once, so copy yours straight away. Anyone holding a <b>write</b> key can control your bots, so keep it on your server and rotate it if it leaks.')}
         <div class="alert alert-error" id="keyErr"></div>
         <div id="newKeyBox" class="alert alert-ok"></div>
         <div id="keyList" style="margin:12px 0"></div>
@@ -1470,12 +1497,10 @@ async function renderDevelopers() {
           <div class="field" style="margin:0;width:120px"><label>Expires (days) ${P}</label><input class="input" id="keyExp" type="number" min="1" max="365" placeholder="never" /></div>
           <div class="field" style="margin:0;flex:1;min-width:160px"><label>Allowed IPs ${P}</label><input class="input" id="keyIps" placeholder="optional, comma separated" /></div>
           <button class="btn btn-primary" id="keyCreate">Create key</button>
-        </div>` : `<p class="pay-note"><a href="#/login">Log in</a> or <a href="#/register">create a free account</a> to generate an API key.</p>`}
-    </div>
+        </div>` : note('<a href="#/login">Log in</a> or <a href="#/register">create a free account</a> to generate an API key.'))}
 
-    ${state.user ? `<div class="card" id="whCard" style="margin-bottom:18px">
-      <h3>Webhooks ${P}</h3>
-      <p class="pay-note">We POST a signed JSON event to your HTTPS endpoint when a bot starts, stops, crashes, comes back online, is logged out of WhatsApp or hits a session conflict.</p>
+    ${state.user ? sec('webhooks', `Webhooks ${P}`, `
+      ${note('We POST a signed JSON event to your HTTPS endpoint when a bot starts, stops, crashes, comes back online, is logged out of WhatsApp or hits a session conflict. No more polling.')}
       <div class="alert alert-error" id="whErr"></div>
       <div id="newWhBox" class="alert alert-ok"></div>
       <div id="whList" style="margin:12px 0"></div>
@@ -1483,33 +1508,85 @@ async function renderDevelopers() {
         <div class="field" style="margin:0;flex:1;min-width:240px"><label>Endpoint URL</label><input class="input" id="whUrl" placeholder="https://example.com/ladybug-hook" /></div>
         <div class="field" style="margin:0;flex:1;min-width:200px"><label>Events (blank = all)</label><input class="input" id="whEvents" placeholder="bot.crashed, bot.online" /></div>
         <button class="btn btn-primary" id="whCreate">Add webhook</button>
-      </div>
-    </div>` : ''}
+      </div>`) : ''}
 
-    <div class="card" style="margin-bottom:18px">
-      <h3>Quick start</h3>
-      <p class="pay-note">Base URL: <code>${esc(base)}</code>. Send your key as a bearer token. All responses are JSON.</p>
-      ${code(`curl ${base}/bots \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
-      ${code(`# restart a bot (write key + API Pass)\ncurl -X POST ${base}/bots/BOT_ID/restart \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
-      ${code(`# live logs (API Pass)\ncurl -N ${base}/bots/BOT_ID/logs/stream \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
-      ${code(`// Node 18+: provision a customer's bot end to end (API Pass)\nconst H = { Authorization: "Bearer " + process.env.LADYBUG_KEY, "Content-Type": "application/json" };\nconst api = (p, o) => fetch("${base}" + p, { headers: H, ...o }).then((r) => r.json());\n\nconst { job } = await api("/session/pair", { method: "POST", body: JSON.stringify({ phone: "263771234567" }) });\nconsole.log("Tell the customer to enter this code in WhatsApp:", job.code);\n\nlet j;\ndo { await new Promise((r) => setTimeout(r, 3000)); j = (await api("/session/pair/" + job.id)).job; } while (j.status !== "ready" && j.status !== "error");\n\nconst { bot } = await api("/bots", { method: "POST", body: JSON.stringify({ name: "Customer bot", sessionId: j.sessionId }) });\nawait api("/bots/" + bot.id + "/start", { method: "POST" });`)}
-    </div>
+    ${sec('guides', 'Guides', `
+      <h4 class="dev-h">Resell bots: onboard a customer end to end ${P}</h4>
+      ${note('Pair the customer\'s WhatsApp number, create their bot, and start it, all from your own checkout or admin panel.')}
+      ${code(`// Node 18+\nconst H = { Authorization: "Bearer " + process.env.LADYBUG_KEY, "Content-Type": "application/json" };\nconst call = (p, o) => fetch("${base}" + p, { headers: H, ...o }).then((r) => r.json());\n\n// 1. Ask for a pairing code for the customer's number (digits only, with country code)\nconst { job } = await call("/session/pair", { method: "POST", body: JSON.stringify({ phone: "263771234567" }) });\nconsole.log("Customer enters this code in WhatsApp > Linked devices:", job.code);\n\n// 2. Poll until the session is ready (every 3 seconds)\nlet j;\ndo { await new Promise((r) => setTimeout(r, 3000)); j = (await call("/session/pair/" + job.id)).job; }\nwhile (j.status !== "ready" && j.status !== "error");\n\n// 3. Create and start the bot\nconst { bot } = await call("/bots", { method: "POST", body: JSON.stringify({ name: "Customer bot", sessionId: j.sessionId }) });\nawait call("/bots/" + bot.id + "/env", { method: "PUT", body: JSON.stringify({ env: { PREFIX: "." } }) });\nawait call("/bots/" + bot.id + "/start", { method: "POST" });`)}
 
-    <div class="card" style="margin-bottom:18px">
-      <h3>Endpoints</h3>
+      <h4 class="dev-h">React to events with webhooks ${P}</h4>
+      ${note('Create a webhook above, store its signing secret, then verify every request. Failed deliveries are retried 3 times (now, +5s, +30s). An endpoint that fails 20 deliveries in a row is paused.')}
+      ${code(`import crypto from "node:crypto";\n\napp.post("/ladybug-hook", express.raw({ type: "application/json" }), (req, res) => {\n  const ts = req.header("X-Ladybug-Timestamp");\n  const sig = req.header("X-Ladybug-Signature");\n  const expected = "v1=" + crypto.createHmac("sha256", process.env.LADYBUG_WEBHOOK_SECRET)\n    .update(ts + "." + req.body.toString()).digest("hex");\n  const fresh = Math.abs(Date.now() / 1000 - Number(ts)) < 300;\n  const ok = fresh && sig.length === expected.length &&\n    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));\n  if (!ok) return res.sendStatus(401);\n  const event = JSON.parse(req.body); // { id, type: "bot.crashed", created, data: { bot, detail } }\n  res.sendStatus(200); // answer fast, work later\n});`)}
+      ${note('Events: <code>bot.started</code>, <code>bot.stopped</code>, <code>bot.crashed</code>, <code>bot.online</code>, <code>bot.logged_out</code>, <code>bot.conflict</code>. Use <b>Send test</b> in the list above to try your endpoint.')}
+
+      <h4 class="dev-h">Watch logs live ${P}</h4>
+      ${code(`curl -N ${base}/bots/BOT_ID/logs/stream?tail=50 \\\n  -H "Authorization: Bearer lbk_your_key_here"\n\n# you receive:  event: log   data: {"t":..., "stream":"stdout", "line":"..."}\n#               event: bot   data: {"type":"crashed", ...}`)}
+      ${note('Session IDs and your custom env values are hidden in log output. Streams last up to 30 minutes, so reconnect when you receive <code>event: end</code>. EventSource cannot send the Authorization header, so use curl or <code>fetch()</code> streaming.')}
+
+      <h4 class="dev-h">Health dashboard in a few lines ${P}</h4>
+      ${code(`# memory and CPU per hour for the last 48h\ncurl "${base}/bots/BOT_ID/resources?hours=48" -H "Authorization: Bearer $KEY"\n# 30-day uptime and recent events\ncurl ${base}/bots/BOT_ID/uptime -H "Authorization: Bearer $KEY"`)}
+    `)}
+
+    ${sec('safety', 'Avoid WhatsApp bans', `
+      <div class="alert show" style="display:block;margin-bottom:12px">Ladybug connects to WhatsApp the same way WhatsApp Web does. That is not an official WhatsApp product, so <b>nobody can guarantee a number will never be restricted</b>. These habits cut the risk a lot. Ladybug Cloud is not affiliated with WhatsApp Inc.</div>
+      <h4 class="dev-h">Do</h4>
+      ${li([
+        '<b>Only message people who opted in</b> or wrote to you first. Unsolicited bulk messages and reports are the number one cause of bans.',
+        '<b>Use an aged number</b> with real chat history. Avoid brand-new SIMs for production. Warm a new number up for 1 to 2 weeks with low volume and real conversations.',
+        '<b>Pace your messages.</b> Add human-like delays (a few seconds, with some randomness) and never fire bursts. Spread large jobs over hours, not seconds.',
+        '<b>Vary content.</b> Do not send the identical text to many people. Personalise, and avoid link-heavy messages.',
+        '<b>Pair once and reuse the session.</b> Every new pairing is a new linked device. The API allows 2 pairing requests per number and 5 per account per hour on purpose.',
+        '<b>One session, one place.</b> Never run the same session on your laptop and on Ladybug at the same time. The platform rejects duplicate sessions (HTTP 409) and stops conflicting twins.',
+        '<b>Fix crashes instead of restarting them.</b> The API enforces a 30 second cooldown and 6 start/restart calls per bot per hour. Listen for <code>bot.crashed</code> and read the logs instead of looping restarts.',
+        '<b>Stop on <code>bot.logged_out</code> or <code>bot.conflict</code>.</b> Do not auto re-pair in a loop. Tell the owner and let them relink once.',
+        '<b>Honour opt-outs and blocks.</b> If people report or block your number, stop messaging them and slow down.',
+        '<b>Tell your customers the risk</b> if you resell bots, and keep their numbers separate from personal ones.',
+      ])}
+      <h4 class="dev-h">Do not</h4>
+      ${li([
+        'Message scraped, bought or cold lists, or add people to groups without consent.',
+        'Send rapid-fire identical messages, mass forwards or chain messages.',
+        'Restart, re-pair or reconnect a bot in a tight loop.',
+        'Use a number you cannot afford to lose for anything high-volume.',
+      ])}
+      ${note('Need real marketing volume? Use the official <a href="https://business.whatsapp.com/products/business-platform" target="_blank" rel="noopener">WhatsApp Business Platform</a> with approved templates. Use Ladybug bots for conversational, opt-in use cases.')}
+    `)}
+
+    ${sec('limits', 'Limits and errors', `
+      <div style="overflow-x:auto"><table class="dev-table">
+        <thead><tr><th>Limit</th><th>Free</th><th>API Pass</th></tr></thead>
+        <tbody>
+          <tr><td>Requests per minute, per key</td><td>30</td><td>600</td></tr>
+          <tr><td>Keys</td><td>1 (read-only)</td><td>5 (expiry + IP allowlist)</td></tr>
+          <tr><td>Start / restart per bot</td><td>-</td><td>1 per 30 s, 6 per hour</td></tr>
+          <tr><td>Pairing requests</td><td>-</td><td>5 per account and 2 per number, per hour</td></tr>
+          <tr><td>Webhooks / open log streams</td><td>-</td><td>5 / 5</td></tr>
+        </tbody>
+      </table></div>
+      ${note('Statuses: <code>401</code> bad, revoked or expired key. <code>402</code> needs the API Pass, or the bot is out of coins. <code>403</code> read-only key or blocked IP. <code>404</code> not your bot. <code>409</code> session already used by another bot. <code>429</code> rate limited or safety guardrail (see <code>Retry-After</code>). Responses carry <code>X-RateLimit-Limit</code> and <code>X-RateLimit-Remaining</code>.')}
+    `)}
+
+    ${sec('reference', 'Endpoint reference', `
       <div style="overflow-x:auto"><table class="dev-table">
         <thead><tr><th>Method</th><th>Path</th><th>Scope</th><th>What it does</th></tr></thead>
         <tbody>${endpoints.map((e) => `<tr><td>${methodChip(e[0])}</td><td><code>${esc(e[1])}</code></td><td>${e[2]}</td><td>${esc(e[3])}</td></tr>`).join('')}</tbody>
       </table></div>
-      <p class="pay-note" style="margin-top:12px">Errors look like <code>{"error":"message"}</code> with a normal status: 401 bad or expired key, 402 needs the API Pass (or out of coins), 403 read-only key or blocked IP, 404 not your bot, 429 rate limited. Spec: <a href="/api/v1/openapi.json" target="_blank" rel="noopener">openapi.json</a>. API keys cannot change passwords, payments or the file drive.</p>
-    </div>
+      ${note('Base URL: <code>' + esc(base) + '</code>. Machine-readable spec: <a href="/api/v1/openapi.json" target="_blank" rel="noopener">openapi.json</a> (import it into Postman or Insomnia). API keys cannot change passwords, payments or the file drive.')}
+    `)}
 
-    <div class="card" style="margin-bottom:18px">
-      <h3>Verifying webhooks</h3>
-      <p class="pay-note">Every request carries <code>X-Ladybug-Timestamp</code> and <code>X-Ladybug-Signature</code> (<code>v1=</code> followed by the hex HMAC-SHA256 of <code>timestamp + "." + raw body</code>, using your webhook secret). Reject anything older than 5 minutes. Return a 2xx within 8 seconds; failures are retried 3 times and an endpoint that fails 20 deliveries in a row is paused.</p>
-      ${code(`import crypto from "node:crypto";\n\napp.post("/ladybug-hook", express.raw({ type: "application/json" }), (req, res) => {\n  const ts = req.header("X-Ladybug-Timestamp");\n  const sig = req.header("X-Ladybug-Signature");\n  const expected = "v1=" + crypto.createHmac("sha256", process.env.LADYBUG_WEBHOOK_SECRET)\n    .update(ts + "." + req.body.toString()).digest("hex");\n  const fresh = Math.abs(Date.now() / 1000 - Number(ts)) < 300;\n  const ok = fresh && sig.length === expected.length &&\n    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));\n  if (!ok) return res.sendStatus(401);\n  const event = JSON.parse(req.body); // { id, type: "bot.crashed", created, data: { bot, detail } }\n  res.sendStatus(200);\n});`)}
-    </div>
+    ${sec('faq', 'FAQ', `
+      <h4 class="dev-h">Who builds and runs the API?</h4>${note('The API is powered by <b>Ntandomods Developers</b>, the team behind Ladybug Cloud.')}
+      <h4 class="dev-h">Does a call cost coins?</h4>${note('API calls themselves are free. Starting or restarting a bot spends coins or trial time exactly like pressing Start in the dashboard.')}
+      <h4 class="dev-h">What happens when my pass expires?</h4>${note('Read access keeps working. Write calls, webhooks, streams and the extra history return <code>402</code> until you renew. Existing bots, keys and webhook settings are kept.')}
+      <h4 class="dev-h">Can I use the API from a browser?</h4>${note('CORS is open, but never put a key in public front-end code. Call the API from your server.')}
+      <h4 class="dev-h">Need help or a feature?</h4>${note('Message the admin from <a href="#/support">Contact admin</a>.')}
+    `)}
+
+    <div class="dev-foot"><img src="/img/logo.png" alt="" /> <span>Ladybug Cloud API &middot; powered by <b>Ntandomods Developers</b></span></div>
   </div></div>`;
+
+  $$('[data-jump]').forEach((b) => (b.onclick = () => { const el = $('#sec-' + b.dataset.jump); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
 
   if (!state.user) return;
   const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : 'never');
