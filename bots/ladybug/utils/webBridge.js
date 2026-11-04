@@ -38,6 +38,36 @@ const conn = { state: 'connecting', since: Date.now(), number: null, name: null 
 const PRESENCE_TTL = 3 * 60 * 1000; // 'available' with no news for 3 minutes is shown as stale
 const TYPING_TTL = 12 * 1000; // WhatsApp sends 'paused' unreliably, so typing expires by itself
 
+const VOICE_MAX_BYTES = 4 * 1024 * 1024;
+let ffmpegBin = null;
+function ffmpegPath() {
+  if (ffmpegBin) return ffmpegBin;
+  try { const p = require('ffmpeg-static'); if (p) return (ffmpegBin = p); } catch (e) { /* not installed, try the system one */ }
+  return (ffmpegBin = 'ffmpeg');
+}
+/** Convert any browser recording (webm / mp4 / ogg / wav) to mono 48 kHz OGG/Opus, which WhatsApp plays as a voice note. */
+function toOggOpus(input) {
+  const { spawn } = require('child_process');
+  return new Promise((resolve, reject) => {
+    const args = ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vn', '-ac', '1', '-ar', '48000', '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip', '-f', 'ogg', 'pipe:1'];
+    let p;
+    try { p = spawn(ffmpegPath(), args, { stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { return reject(new Error('Voice notes need ffmpeg on the server')); }
+    const out = []; let err = ''; let done = false;
+    const finish = (fn, v) => { if (done) return; done = true; clearTimeout(timer); fn(v); };
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch (e) { /* gone */ } finish(reject, new Error('Voice conversion timed out')); }, 30000);
+    p.on('error', () => finish(reject, new Error('Voice notes need ffmpeg on the server. Run Admin > Installer > Install Dependencies.')));
+    p.stdout.on('data', (d) => out.push(d));
+    p.stderr.on('data', (d) => { if (err.length < 500) err += d; });
+    p.on('close', (code) => {
+      const buf = Buffer.concat(out);
+      if (code === 0 && buf.length > 200) finish(resolve, buf);
+      else finish(reject, new Error('Could not process that recording' + (err ? ': ' + err.trim().split('\n').pop().slice(0, 120) : '')));
+    });
+    p.stdin.on('error', () => { /* ffmpeg closed early, the close handler reports it */ });
+    p.stdin.end(input);
+  });
+}
+
 const isGroup = (jid) => String(jid).endsWith('@g.us');
 const okJid = (jid) => /^[0-9A-Za-z._:-]+@(s\.whatsapp\.net|g\.us|lid)$/.test(String(jid || ''));
 const num = (jid) => String(jid || '').split('@')[0].split(':')[0];
@@ -287,10 +317,10 @@ const handlers = {
     return { presence: presenceOf(jid) };
   },
   /** "typing..." indicator while the operator writes a reply. */
-  async typing({ jid, on } = {}) {
+  async typing({ jid, on, mode } = {}) {
     if (!sock) throw new Error('Bot is not connected');
     if (!okJid(jid)) throw new Error('Invalid chat id');
-    await sock.sendPresenceUpdate(on ? 'composing' : 'paused', jid);
+    await sock.sendPresenceUpdate(on ? (mode === 'recording' ? 'recording' : 'composing') : 'paused', jid);
     return { ok: true };
   },
   /** Profile picture URL (cached for 30 minutes; WhatsApp only returns it if the contact allows it). */
@@ -312,7 +342,7 @@ const handlers = {
     const c = chats.get(jid);
     return { chat: c ? chatView(c) : { jid, name: contacts.get(jid) || '+' + num(jid), isGroup: isGroup(jid), unread: 0 }, messages: list.slice(-Math.min(200, Math.max(1, limit))), hasMore: list.length > limit };
   },
-  async send({ jid, text, quotedId, react } = {}) {
+  async send({ jid, text, quotedId, react, mentions } = {}) {
     if (!sock) throw new Error('Bot is not connected');
     if (!okJid(jid)) throw new Error('Invalid chat id');
     const list = msgs.get(jid) || [];
@@ -330,7 +360,12 @@ const handlers = {
       const q = list.find((m) => m.id === quotedId);
       if (q) opts.quoted = { key: { remoteJid: jid, id: q.id, fromMe: q.fromMe, participant: isGroup(jid) && !q.fromMe ? q.sender + '@s.whatsapp.net' : undefined }, message: { conversation: q.text || ' ' } };
     }
-    const sent = await sock.sendMessage(jid, { text: body }, opts);
+    const content = { text: body };
+    if (Array.isArray(mentions) && isGroup(jid)) {
+      const ids = [...new Set(mentions.map(String))].filter((x) => /^\d{5,20}$/.test(x) && body.includes('@' + x)).slice(0, 30);
+      if (ids.length) content.mentions = ids.map((x) => x + '@s.whatsapp.net');
+    }
+    const sent = await sock.sendMessage(jid, content, opts);
     const r = ingest(sent, false);
     if (r) emit('message', r);
     return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
@@ -399,6 +434,46 @@ const handlers = {
     const r = ingest(sent, false);
     if (r) emit('message', r);
     return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
+  },
+  /**
+   * Send a voice note recorded in the browser. Browsers record WebM/Opus or MP4/AAC, but WhatsApp only plays
+   * a push-to-talk note properly as OGG/Opus, so it is converted with ffmpeg first.
+   */
+  async sendVoice({ jid, data, mime, seconds, quotedId } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    if (typeof data !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(data)) throw new Error('Invalid recording');
+    const input = Buffer.from(data, 'base64');
+    if (!input.length) throw new Error('Recording is empty');
+    if (input.length > VOICE_MAX_BYTES) throw new Error('Voice note is too large (limit 4 MB)');
+    const secs = Math.max(1, Math.min(900, Math.round(Number(seconds) || 1)));
+    const ogg = await toOggOpus(input, String(mime || ''));
+    const opts = {};
+    const list = msgs.get(jid) || [];
+    if (quotedId) {
+      const q = list.find((m) => m.id === quotedId);
+      if (q) opts.quoted = { key: { remoteJid: jid, id: q.id, fromMe: q.fromMe, participant: isGroup(jid) && !q.fromMe ? q.sender + '@s.whatsapp.net' : undefined }, message: { conversation: q.text || '' } };
+    }
+    const sent = await sock.sendMessage(jid, { audio: ogg, mimetype: 'audio/ogg; codecs=opus', ptt: true, seconds: secs }, opts);
+    const r = ingest(sent, false);
+    if (r) emit('message', r);
+    return { ok: true, id: sent && sent.key && sent.key.id, message: r ? r.entry : null };
+  },
+  /** Search message text across every chat kept in memory (newest first). */
+  search({ q, limit = 40 } = {}) {
+    const needle = String(q || '').trim().toLowerCase();
+    if (needle.length < 2) return { results: [] };
+    const out = [];
+    for (const [jid, list] of msgs) {
+      const c = chats.get(jid);
+      for (let i = list.length - 1; i >= 0 && out.length < 400; i--) {
+        const m = list[i];
+        if (m.deleted || !m.text || !m.text.toLowerCase().includes(needle)) continue;
+        out.push({ jid, chat: c ? c.name : contacts.get(jid) || '+' + num(jid), isGroup: isGroup(jid), id: m.id, ts: m.ts, fromMe: m.fromMe, sender: m.senderName || null, text: m.text.slice(0, 220) });
+      }
+    }
+    out.sort((a, b) => b.ts - a.ts);
+    return { results: out.slice(0, Math.min(100, Math.max(1, Number(limit) || 40))), total: out.length };
   },
   /** Delete one of OUR messages for everyone. */
   async deleteMsg({ jid, id } = {}) {

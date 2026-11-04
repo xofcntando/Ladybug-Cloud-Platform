@@ -68,6 +68,30 @@ What happens: users, bots, coins, subscriptions and login sessions are mirrored 
 
 ---
 
+## 💬 Ladybug Chat (the WhatsApp Web console)
+
+Open any running bot and press **Web** to get a full browser client for the bot's number.
+
+| Feature | Notes |
+| --- | --- |
+| **Voice notes** | Record in the browser (mic button, Esc cancels, 5 min max). The server converts it to OGG/Opus with ffmpeg and sends it as a real push-to-talk note, with "recording audio…" shown to the other side. Incoming voice notes get a waveform player with 1x / 1.5x / 2x speed and seek. |
+| **Themes** | 11 built-in themes (Midnight, Daylight, AMOLED, Ladybug, Ocean, Forest, Violet, Graphite, Sunset, Mint, Rose), "follow my device", custom accent colour, custom bubble colours, corner roundness. |
+| **Wallpapers** | Doodle, plain, dots, 4 gradients, or your own photo (resized and dimmable). |
+| **Layout** | Text size, compact mode, Enter-to-send or Ctrl+Enter, sounds. Settings live in the browser (`wa_look`). |
+| **Formatting** | `*bold*`, `_italic_`, `~strike~`, `` `mono` ``, code blocks and clickable links render in chats. Ctrl+B / I / E / Shift+X and a format bar in the composer. |
+| **Emoji** | Categorised picker with recents. |
+| **Quick replies** | Type `/` to insert saved replies. Manage them with the lightning button. |
+| **@mentions** | In groups type `@` to pick a member; the message is sent with real mentions. |
+| **Search** | `Ctrl+Shift+F` searches messages in every chat the bot has seen since it started. |
+| **Drafts** | Unsent text is kept per chat, even after a reload. |
+| **Export** | Right-click a chat, then **Export chat (.txt)**. |
+| **Shortcuts** | Press `?` for the list (Alt+Up/Down switches chats, Ctrl+, opens appearance). |
+
+The logo lives in `public/img/wa-logo.svg` (PNG sizes next to it). Messages are still held in memory only and never written to disk.
+New endpoints: `POST /api/bots/:id/web/sendvoice`, `GET /api/bots/:id/web/search`, and `mentions` on `POST /web/send`.
+
+---
+
 ## 🚀 Deploy on Render
 
 ### Option A — Blueprint (recommended)
