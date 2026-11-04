@@ -25,6 +25,7 @@ const envvars = require('./lib/envvars');
 const alerts = require('./lib/alerts');
 const uptime = require('./lib/uptime');
 const apikeys = require('./lib/apikeys');
+const webhooks = require('./lib/webhooks');
 const sessioninfo = require('./lib/sessioninfo');
 const compression = require('compression');
 const storage = require('./lib/storage');
@@ -108,6 +109,7 @@ function publicUser(u) {
     envVarsUntil: u.envVarsUntil || null,
     alertsUntil: u.alertsUntil || null,
     uptimeUntil: u.uptimeUntil || null,
+    apiUntil: u.apiUntil || null,
   };
 }
 
@@ -337,13 +339,19 @@ app.post('/api/account/alerts/test', requireAuth, async (req, res) => {
 
 // ---------------------------------------------------------------- API keys (managed from the dashboard)
 app.get('/api/account/keys', requireAuth, (req, res) => {
-  res.json({ keys: apikeys.list(req.user), max: apikeys.MAX_KEYS });
+  const limits = billing.apiLimits(req.user);
+  res.json({
+    keys: apikeys.list(req.user),
+    max: limits.maxKeys,
+    pass: billing.featureSummary(req.user, 'api'),
+    limits,
+  });
 });
 
 app.post('/api/account/keys', requireAuth, (req, res) => {
-  const { name, scope } = req.body || {};
-  const r = apikeys.create(req.user, { name, scope });
-  if (r.error) return res.status(400).json({ error: r.error });
+  const { name, scope, expiresInDays, allowedIps } = req.body || {};
+  const r = apikeys.create(req.user, { name, scope, expiresInDays, allowedIps });
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
   // the full key is returned exactly once
   res.json({ ok: true, key: r.key, record: r.record });
 });
@@ -351,6 +359,34 @@ app.post('/api/account/keys', requireAuth, (req, res) => {
 app.delete('/api/account/keys/:id', requireAuth, (req, res) => {
   if (!apikeys.revoke(req.user, req.params.id)) return res.status(404).json({ error: 'Key not found' });
   res.json({ ok: true });
+});
+
+// Signed event webhooks (API Pass)
+app.get('/api/account/webhooks', requireAuth, (req, res) => {
+  res.json({ webhooks: webhooks.list(req.user), events: webhooks.BOT_EVENTS, limits: billing.apiLimits(req.user) });
+});
+
+app.post('/api/account/webhooks', requireAuth, async (req, res) => {
+  const r = await webhooks.create(req.user, req.body || {});
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
+  res.json({ ok: true, webhook: r.webhook, secret: r.secret });
+});
+
+app.delete('/api/account/webhooks/:id', requireAuth, (req, res) => {
+  if (!webhooks.remove(req.user, req.params.id)) return res.status(404).json({ error: 'Webhook not found' });
+  res.json({ ok: true });
+});
+
+app.post('/api/account/webhooks/:id/test', requireAuth, async (req, res) => {
+  const r = await webhooks.sendTest(req.user, req.params.id);
+  if (!r) return res.status(404).json({ error: 'Webhook not found' });
+  res.json(r);
+});
+
+app.post('/api/account/webhooks/:id/:action(enable|disable)', requireAuth, (req, res) => {
+  const w = webhooks.setActive(req.user, req.params.id, req.params.action === 'enable');
+  if (!w) return res.status(404).json({ error: 'Webhook not found' });
+  res.json({ ok: true, webhook: w });
 });
 
 // ---------------------------------------------------------------- billing / coins
@@ -579,7 +615,7 @@ app.delete('/api/admin/messages/:userId', requireAdmin, (req, res) => {
 // ---------------------------------------------------------------- payment submissions
 // A user reports a transfer ("I paid"); the admin approves it in one click and the
 // plan is switched on automatically, instead of hand-editing the user row.
-const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', 'envvars', 'alerts', 'uptime', ...billing.cfg.packs.map((p) => p.key)];
+const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', 'envvars', 'alerts', 'uptime', 'api', ...billing.cfg.packs.map((p) => p.key)];
 
 function paymentView(x) {
   const u = db.findUserById(x.userId);
@@ -606,7 +642,7 @@ function applyPurchase(u, item, qty) {
   if (billing.FEATURES[item]) {
     const days = billing.FEATURES[item].days();
     billing.grantFeature(u, item, days);
-    const label = { envvars: 'Custom bot settings', alerts: 'Crash alerts', uptime: 'Uptime history' }[item];
+    const label = { envvars: 'Custom bot settings', alerts: 'Crash alerts', uptime: 'Uptime history', api: 'API Pass' }[item];
     return `${label} for ${days} days`;
   }
   if (billing.packByKey(item)) {
@@ -762,20 +798,25 @@ app.get('/api/bots', requireAuth, (req, res) => {
   res.json({ bots: list, limit: billing.botLimitFor(req.user) });
 });
 
-app.post('/api/bots', requireAuth, (req, res) => {
-  const { name, sessionId } = req.body || {};
-  const owned = db.botsForUser(req.user.id);
-  const limit = billing.botLimitFor(req.user);
+/**
+ * Shared bot helpers (dashboard + public API). Return { code, body }.
+ */
+function createBotFor(user, { name, sessionId }) {
+  const owned = db.botsForUser(user.id);
+  const limit = billing.botLimitFor(user);
   if (owned.length >= limit) {
-    return res.status(403).json({
-      error:
-        `Bot limit reached (${limit}). Add an extra slot for $${billing.cfg.slotPriceUsd}/month, ` +
-        'upgrade to Unlimited, or contact the admin.',
-      limit,
-    });
+    return {
+      code: 403,
+      body: {
+        error:
+          `Bot limit reached (${limit}). Add an extra slot for $${billing.cfg.slotPriceUsd}/month, ` +
+          'upgrade to Unlimited, or contact the admin.',
+        limit,
+      },
+    };
   }
-  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Bot name is required' });
-  if (!sessionId || !String(sessionId).trim()) return res.status(400).json({ error: 'Session ID is required' });
+  if (!name || !String(name).trim()) return { code: 400, body: { error: 'Bot name is required' } };
+  if (!sessionId || !String(sessionId).trim()) return { code: 400, body: { error: 'Session ID is required' } };
 
   // One WhatsApp session = one connection. Reusing a session across bots makes
   // WhatsApp answer with "Stream Errored (conflict)" and both bots flap forever.
@@ -783,14 +824,15 @@ app.post('/api/bots', requireAuth, (req, res) => {
     .listBots()
     .find((b) => b.sessionId && b.sessionId === String(sessionId).trim());
   if (clash) {
-    return res.status(409).json({
-      error: `That session ID is already used by the bot "${clash.name}". Each bot needs its own WhatsApp session.`,
-    });
+    return {
+      code: 409,
+      body: { error: `That session ID is already used by the bot "${clash.name}". Each bot needs its own WhatsApp session.` },
+    };
   }
 
   const bot = {
     id: uid(),
-    userId: req.user.id,
+    userId: user.id,
     name: String(name).trim().slice(0, 40),
     sessionId: String(sessionId).trim(),
     autoRestart: true,
@@ -798,7 +840,30 @@ app.post('/api/bots', requireAuth, (req, res) => {
     status: 'stopped',
   };
   db.addBot(bot);
-  res.json({ ok: true, bot: botView(bot) });
+  return { code: 200, body: { ok: true, bot: botView(bot) } };
+}
+
+function deleteBotFor(bot) {
+  bots.stop(bot.id);
+  db.deleteBot(bot.id);
+  return { code: 200, body: { ok: true } };
+}
+
+/** Hide session ids and custom env values from log text. */
+function logScrubber(bot) {
+  const secrets = [bot.sessionId, ...Object.values(bot.env || {})]
+    .map((v) => String(v || ''))
+    .filter((v) => v.length >= 6);
+  return (line) => {
+    let out = String(line).replace(/Ladybug![A-Za-z0-9+/=_-]{8,}/g, 'Ladybug![hidden]');
+    for (const sec of secrets) out = out.split(sec).join('[hidden]');
+    return out;
+  };
+}
+
+app.post('/api/bots', requireAuth, (req, res) => {
+  const r = createBotFor(req.user, req.body || {});
+  res.status(r.code).json(r.body);
 });
 
 function ownBot(req, res) {
@@ -836,55 +901,70 @@ app.get('/api/bots/:id/env', requireAuth, (req, res) => {
   });
 });
 
+function setBotEnvFor(bot, input) {
+  const owner = db.findUserById(bot.userId);
+  if (!billing.featureActive(owner, 'envvars')) {
+    return {
+      code: 402,
+      body: { error: `Custom bot settings is a paid feature ($${billing.cfg.envPriceUsd}/month). Buy it on the Pay page to unlock it.` },
+    };
+  }
+  const r = envvars.sanitize(input);
+  if (!r.ok) return { code: 400, body: { error: r.error } };
+  db.updateBot(bot.id, { env: r.env });
+  const running = bots.status(bot.id).running;
+  return {
+    code: 200,
+    body: {
+      ok: true,
+      env: r.env,
+      restartNeeded: running,
+      message: running ? 'Saved. Restart the bot to apply the new settings.' : 'Saved. They apply the next time the bot starts.',
+    },
+  };
+}
+
 app.put('/api/bots/:id/env', requireAuth, (req, res) => {
   const bot = ownBot(req, res);
   if (!bot) return;
-  const owner = db.findUserById(bot.userId);
-  if (!billing.featureActive(owner, 'envvars')) {
-    return res.status(402).json({
-      error: `Custom bot settings is a paid feature ($${billing.cfg.envPriceUsd}/month). Buy it on the Pay page to unlock it.`,
-    });
-  }
-  const r = envvars.sanitize(req.body && req.body.env);
-  if (!r.ok) return res.status(400).json({ error: r.error });
-  db.updateBot(bot.id, { env: r.env });
-  const running = bots.status(bot.id).running;
-  res.json({
-    ok: true,
-    env: r.env,
-    restartNeeded: running,
-    message: running ? 'Saved. Restart the bot to apply the new settings.' : 'Saved. They apply the next time the bot starts.',
-  });
+  const r = setBotEnvFor(bot, req.body && req.body.env);
+  res.status(r.code).json(r.body);
 });
 
-app.patch('/api/bots/:id', requireAuth, (req, res) => {
-  const bot = ownBot(req, res);
-  if (!bot) return;
+function patchBotFor(bot, body) {
+  body = body || {};
   const patch = {};
-  if (req.body.name) patch.name = String(req.body.name).trim().slice(0, 40);
-  if (typeof req.body.sessionId === 'string' && req.body.sessionId.trim()) {
-    const nextSession = req.body.sessionId.trim();
+  if (body.name) patch.name = String(body.name).trim().slice(0, 40);
+  if (typeof body.sessionId === 'string' && body.sessionId.trim()) {
+    const nextSession = body.sessionId.trim();
     const clash = db
       .listBots()
       .find((b) => b.id !== bot.id && b.sessionId && b.sessionId === nextSession);
     if (clash) {
-      return res.status(409).json({
-        error: `That session ID is already used by the bot "${clash.name}". Each bot needs its own WhatsApp session.`,
-      });
+      return {
+        code: 409,
+        body: { error: `That session ID is already used by the bot "${clash.name}". Each bot needs its own WhatsApp session.` },
+      };
     }
     patch.sessionId = nextSession;
   }
-  if (typeof req.body.autoRestart === 'boolean') patch.autoRestart = req.body.autoRestart;
+  if (typeof body.autoRestart === 'boolean') patch.autoRestart = body.autoRestart;
   db.updateBot(bot.id, patch);
-  res.json({ ok: true, bot: botView(db.findBotById(bot.id)) });
+  return { code: 200, body: { ok: true, bot: botView(db.findBotById(bot.id)) } };
+}
+
+app.patch('/api/bots/:id', requireAuth, (req, res) => {
+  const bot = ownBot(req, res);
+  if (!bot) return;
+  const r = patchBotFor(bot, req.body);
+  res.status(r.code).json(r.body);
 });
 
 app.delete('/api/bots/:id', requireAuth, (req, res) => {
   const bot = ownBot(req, res);
   if (!bot) return;
-  bots.stop(bot.id);
-  db.deleteBot(bot.id);
-  res.json({ ok: true });
+  const r = deleteBotFor(bot);
+  res.status(r.code).json(r.body);
 });
 
 /**
@@ -960,14 +1040,7 @@ app.get('/api/bots/:id/logs', requireAuth, (req, res) => {
 app.get('/api/bots/:id/logs/download', requireAuth, (req, res) => {
   const bot = ownBot(req, res);
   if (!bot) return;
-  const secrets = [bot.sessionId, ...Object.values(bot.env || {})]
-    .map((v) => String(v || ''))
-    .filter((v) => v.length >= 6);
-  const scrub = (line) => {
-    let out = String(line).replace(/Ladybug![A-Za-z0-9+/=_-]{8,}/g, 'Ladybug![hidden]');
-    for (const sec of secrets) out = out.split(sec).join('[hidden]');
-    return out;
-  };
+  const scrub = logScrubber(bot);
   const entries = bots.logs(bot.id, 100000);
   const st = bots.status(bot.id);
   const header = [
@@ -1298,7 +1371,10 @@ app.get('/api/admin/storage', requireAdmin, (req, res) => {
   });
 });
 
-require('./lib/public-api')({ app, db, bots, billing, rateLimit, publicUser, botView, apikeys, startBotFor, stopBotFor, restartBotFor });
+require('./lib/public-api')({
+  app, db, bots, billing, publicUser, botView, apikeys, webhooks, uptime, envvars, sessiongen,
+  startBotFor, stopBotFor, restartBotFor, createBotFor, deleteBotFor, patchBotFor, setBotEnvFor, logScrubber,
+});
 
 // ---------------------------------------------------------------- static
 app.get('/healthz', (req, res) => {
@@ -1433,6 +1509,7 @@ setInterval(() => { try { referralTick(); } catch (e) { console.error('[referral
 setTimeout(billingTick, 5000).unref();
 setInterval(() => {
   try { uptime.tick(db.listBots(), (id) => bots.status(id).running, db); } catch (e) { console.error('[uptime]', e.message); }
+  try { uptime.recordResources(db.listBots(), (id) => bots.status(id).resources); } catch (e) { console.error('[resources]', e.message); }
 }, 60 * 1000).unref();
 
 // Sample CPU/memory of running bots every 15s

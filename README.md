@@ -204,21 +204,43 @@ Security headers on every response, gzip compression, per-IP rate limits (sign-i
 
 ## Public API (v1)
 
-Control your bots from scripts, CI or your own dashboard.
-
-1. Log in, open **API** in the top bar and create a key (`read` or `write`). The key is shown once.
-2. Send it as a bearer token to `/api/v1`:
+Control your bots from scripts, CI or your own dashboard. Log in, open **API** in the top bar, create a key, and send it as a bearer token to `/api/v1`:
 
 ```bash
 curl https://YOUR-SITE/api/v1/bots -H "Authorization: Bearer lbk_your_key"
-curl -X POST https://YOUR-SITE/api/v1/bots/BOT_ID/restart -H "Authorization: Bearer lbk_your_key"
 ```
 
-| Method | Path | Scope |
-| --- | --- | --- |
-| GET | `/ping` | none |
-| GET | `/me`, `/billing`, `/bots`, `/bots/{id}`, `/bots/{id}/logs?limit=` | read |
-| POST | `/bots/{id}/start`, `/stop`, `/restart` | write |
+Full reference in the dashboard (API page) and machine-readable at `/api/v1/openapi.json`.
 
-Rate limit: 120 requests/minute per key. Machine-readable spec at `/api/v1/openapi.json`.
-Keys are stored as SHA-256 hashes, only see the owner's own bots, and cannot touch passwords, payments, env vars, storage or admin routes.
+### Free vs API Pass ($5 / 30 days)
+
+| | Free | API Pass |
+| --- | --- | --- |
+| Read endpoints (`me`, `billing`, `usage`, `bots`, `logs`, `uptime` 24h) | yes | yes |
+| Keys | 1 read-only | 5, read or write, optional expiry + IP allowlist |
+| Rate limit | 30 / min | 600 / min |
+| Start / stop / restart bots | no | yes |
+| Create, rename, delete bots (`POST /bots`, `PATCH`, `DELETE`) | no | yes |
+| WhatsApp pairing for customers (`/session/pair`) | no | yes |
+| Env vars over the API (`/bots/{id}/env`) | no | yes |
+| Signed webhooks (`/webhooks`) | no | yes |
+| Live log stream (`/bots/{id}/logs/stream`, SSE) | no | yes |
+| 30-day uptime, 7-day resource history | no | yes |
+| Crash alerts, custom bot settings, uptime history passes | separate | included |
+
+The pass is bought on the Pay page (`item: api`, price `API_PRICE_USD`, length `API_DAYS`) and approved by the admin like the other passes, or granted from the admin user list (**+API**).
+
+### Webhook events
+
+`bot.started`, `bot.stopped`, `bot.crashed`, `bot.online`, `bot.logged_out`, `bot.conflict` (plus `webhook.test`). Each request is signed:
+
+```
+X-Ladybug-Timestamp: <unix seconds>
+X-Ladybug-Signature: v1=<hex HMAC-SHA256 of "<timestamp>.<raw body>" with the webhook secret>
+```
+
+Reject timestamps older than 5 minutes. Failed deliveries are retried at 0s, 5s and 30s; an endpoint that fails 20 deliveries in a row is paused.
+
+### Security
+
+Keys and webhook URLs are checked server-side: keys are stored as SHA-256 hashes and see only the owner's bots; webhook URLs must be public HTTPS (private ranges blocked); log output hides session IDs and env values; API keys cannot touch passwords, payments or the file drive.

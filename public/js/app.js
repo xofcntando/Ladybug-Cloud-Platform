@@ -1425,87 +1425,190 @@ function startStatusPolling() {
 /* ---------------------------------------------------------------- developers (public API) */
 async function renderDevelopers() {
   const base = location.origin + '/api/v1';
-  const ex = (cmd) => `<pre class="code-block">${esc(cmd)}</pre>`;
+  const code = (txt) => `<pre class="code-block">${esc(txt)}</pre>`;
+  const P = '<span class="chip pro">Pass</span>';
   const endpoints = [
     ['GET', '/ping', 'none', 'Health check'],
-    ['GET', '/me', 'read', 'Your account, plan and the key in use'],
+    ['GET', '/me', 'read', 'Your account, plan limits and the key in use'],
     ['GET', '/billing', 'read', 'Coins, trial and pass status'],
+    ['GET', '/usage', 'read', 'Request counts for your keys'],
     ['GET', '/bots', 'read', 'List your bots and your bot limit'],
-    ['GET', '/bots/{id}', 'read', 'One bot: status, uptime, WhatsApp state, resources'],
-    ['GET', '/bots/{id}/logs?limit=200', 'read', 'Recent log lines (max 1000)'],
-    ['POST', '/bots/{id}/start', 'write', 'Start a bot (uses coins / trial like the dashboard)'],
-    ['POST', '/bots/{id}/stop', 'write', 'Stop a bot'],
-    ['POST', '/bots/{id}/restart', 'write', 'Restart a bot'],
+    ['GET', '/bots/{id}', 'read', 'One bot: status, WhatsApp state, resources'],
+    ['GET', '/bots/{id}/logs?limit=200', 'read', 'Recent log lines (max 1000, secrets hidden)'],
+    ['GET', '/bots/{id}/uptime', 'read', 'Uptime report. 24 hours free, 30 days with the pass'],
+    ['POST', '/bots/{id}/start | stop | restart', 'write ' + P, 'Control a bot (uses coins / trial like the dashboard)'],
+    ['POST', '/bots', 'write ' + P, 'Create a bot: {"name", "sessionId"}'],
+    ['PATCH', '/bots/{id}', 'write ' + P, 'Rename, change session ID or auto-restart'],
+    ['DELETE', '/bots/{id}', 'write ' + P, 'Delete a bot'],
+    ['GET | PUT', '/bots/{id}/env', 'read / write ' + P, 'Read or replace custom env vars (PREFIX, OWNER_NUMBER, ...)'],
+    ['POST', '/session/pair', 'write ' + P, 'Start WhatsApp pairing: {"phone"}. Returns a pairing code'],
+    ['GET | DELETE', '/session/pair/{id}', 'read / write ' + P, 'Poll a pairing job until it returns the session ID, or cancel it'],
+    ['GET', '/bots/{id}/logs/stream', 'read ' + P, 'Live logs over Server-Sent Events'],
+    ['GET', '/bots/{id}/resources?hours=24', 'read ' + P, 'Hourly memory and CPU averages, up to 7 days'],
+    ['GET | POST', '/webhooks', 'read / write ' + P, 'List or create signed event webhooks (secret shown once)'],
+    ['DELETE', '/webhooks/{id}', 'write ' + P, 'Delete a webhook'],
+    ['POST', '/webhooks/{id}/test | enable | disable', 'write ' + P, 'Send a test event, or pause / resume'],
   ];
+  const methodChip = (m) => `<span class="chip ${m.startsWith('GET') && !m.includes('|') ? 'on' : ''}">${m}</span>`;
+
   $('#view').innerHTML = `
   <div class="app"><div class="wrap">
     <div class="app-head"><div><h1>Developer API</h1><p>Control your Ladybug bots from scripts, CI, Discord/Slack bots or your own dashboard.</p></div></div>
+    <div id="passCard"></div>
 
     <div class="card" id="keysCard" style="margin-bottom:18px">
       <h3>API keys</h3>
       ${state.user ? `
-        <p class="pay-note">Keys are shown once, so copy yours straight away. Treat a key like a password: anyone holding a <b>write</b> key can start and stop your bots. Max 5 keys.</p>
+        <p class="pay-note">Keys are shown once, so copy yours straight away. Treat a key like a password: anyone holding a <b>write</b> key can control your bots.</p>
         <div class="alert alert-error" id="keyErr"></div>
         <div id="newKeyBox" class="alert alert-ok"></div>
         <div id="keyList" style="margin:12px 0"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-          <div class="field" style="margin:0;flex:1;min-width:180px"><label>Key name</label><input class="input" id="keyName" maxlength="40" placeholder="e.g. my-script" /></div>
+          <div class="field" style="margin:0;flex:1;min-width:160px"><label>Key name</label><input class="input" id="keyName" maxlength="40" placeholder="e.g. my-script" /></div>
           <div class="field" style="margin:0"><label>Access</label>
             <select class="input" id="keyScope"><option value="read">Read only</option><option value="write">Read + control bots</option></select></div>
+          <div class="field" style="margin:0;width:120px"><label>Expires (days) ${P}</label><input class="input" id="keyExp" type="number" min="1" max="365" placeholder="never" /></div>
+          <div class="field" style="margin:0;flex:1;min-width:160px"><label>Allowed IPs ${P}</label><input class="input" id="keyIps" placeholder="optional, comma separated" /></div>
           <button class="btn btn-primary" id="keyCreate">Create key</button>
         </div>` : `<p class="pay-note"><a href="#/login">Log in</a> or <a href="#/register">create a free account</a> to generate an API key.</p>`}
     </div>
 
+    ${state.user ? `<div class="card" id="whCard" style="margin-bottom:18px">
+      <h3>Webhooks ${P}</h3>
+      <p class="pay-note">We POST a signed JSON event to your HTTPS endpoint when a bot starts, stops, crashes, comes back online, is logged out of WhatsApp or hits a session conflict.</p>
+      <div class="alert alert-error" id="whErr"></div>
+      <div id="newWhBox" class="alert alert-ok"></div>
+      <div id="whList" style="margin:12px 0"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="margin:0;flex:1;min-width:240px"><label>Endpoint URL</label><input class="input" id="whUrl" placeholder="https://example.com/ladybug-hook" /></div>
+        <div class="field" style="margin:0;flex:1;min-width:200px"><label>Events (blank = all)</label><input class="input" id="whEvents" placeholder="bot.crashed, bot.online" /></div>
+        <button class="btn btn-primary" id="whCreate">Add webhook</button>
+      </div>
+    </div>` : ''}
+
     <div class="card" style="margin-bottom:18px">
       <h3>Quick start</h3>
-      <p class="pay-note">Base URL: <code>${esc(base)}</code>. Send your key as a bearer token. All responses are JSON. Limit: 120 requests per minute per key.</p>
-      ${ex(`curl ${base}/bots \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
-      ${ex(`# restart a bot (needs a write key)\ncurl -X POST ${base}/bots/BOT_ID/restart \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
-      ${ex(`// Node 18+\nconst r = await fetch("${base}/bots", {\n  headers: { Authorization: "Bearer " + process.env.LADYBUG_KEY },\n});\nconsole.log((await r.json()).bots);`)}
+      <p class="pay-note">Base URL: <code>${esc(base)}</code>. Send your key as a bearer token. All responses are JSON.</p>
+      ${code(`curl ${base}/bots \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
+      ${code(`# restart a bot (write key + API Pass)\ncurl -X POST ${base}/bots/BOT_ID/restart \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
+      ${code(`# live logs (API Pass)\ncurl -N ${base}/bots/BOT_ID/logs/stream \\\n  -H "Authorization: Bearer lbk_your_key_here"`)}
+      ${code(`// Node 18+: provision a customer's bot end to end (API Pass)\nconst H = { Authorization: "Bearer " + process.env.LADYBUG_KEY, "Content-Type": "application/json" };\nconst api = (p, o) => fetch("${base}" + p, { headers: H, ...o }).then((r) => r.json());\n\nconst { job } = await api("/session/pair", { method: "POST", body: JSON.stringify({ phone: "263771234567" }) });\nconsole.log("Tell the customer to enter this code in WhatsApp:", job.code);\n\nlet j;\ndo { await new Promise((r) => setTimeout(r, 3000)); j = (await api("/session/pair/" + job.id)).job; } while (j.status !== "ready" && j.status !== "error");\n\nconst { bot } = await api("/bots", { method: "POST", body: JSON.stringify({ name: "Customer bot", sessionId: j.sessionId }) });\nawait api("/bots/" + bot.id + "/start", { method: "POST" });`)}
     </div>
 
     <div class="card" style="margin-bottom:18px">
       <h3>Endpoints</h3>
       <div style="overflow-x:auto"><table class="dev-table">
         <thead><tr><th>Method</th><th>Path</th><th>Scope</th><th>What it does</th></tr></thead>
-        <tbody>${endpoints.map((e) => `<tr><td><span class="chip ${e[0] === 'POST' ? '' : 'on'}">${e[0]}</span></td><td><code>${esc(e[1])}</code></td><td>${e[2]}</td><td>${esc(e[3])}</td></tr>`).join('')}</tbody>
+        <tbody>${endpoints.map((e) => `<tr><td>${methodChip(e[0])}</td><td><code>${esc(e[1])}</code></td><td>${e[2]}</td><td>${esc(e[3])}</td></tr>`).join('')}</tbody>
       </table></div>
-      <p class="pay-note" style="margin-top:12px">Errors look like <code>{"error":"message"}</code> with a normal status: 401 bad key, 403 read-only key, 402 out of coins, 404 not your bot, 429 rate limited. Machine-readable spec: <a href="/api/v1/openapi.json" target="_blank" rel="noopener">openapi.json</a>. API keys cannot change passwords, payments, env vars or storage.</p>
+      <p class="pay-note" style="margin-top:12px">Errors look like <code>{"error":"message"}</code> with a normal status: 401 bad or expired key, 402 needs the API Pass (or out of coins), 403 read-only key or blocked IP, 404 not your bot, 429 rate limited. Spec: <a href="/api/v1/openapi.json" target="_blank" rel="noopener">openapi.json</a>. API keys cannot change passwords, payments or the file drive.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <h3>Verifying webhooks</h3>
+      <p class="pay-note">Every request carries <code>X-Ladybug-Timestamp</code> and <code>X-Ladybug-Signature</code> (<code>v1=</code> followed by the hex HMAC-SHA256 of <code>timestamp + "." + raw body</code>, using your webhook secret). Reject anything older than 5 minutes. Return a 2xx within 8 seconds; failures are retried 3 times and an endpoint that fails 20 deliveries in a row is paused.</p>
+      ${code(`import crypto from "node:crypto";\n\napp.post("/ladybug-hook", express.raw({ type: "application/json" }), (req, res) => {\n  const ts = req.header("X-Ladybug-Timestamp");\n  const sig = req.header("X-Ladybug-Signature");\n  const expected = "v1=" + crypto.createHmac("sha256", process.env.LADYBUG_WEBHOOK_SECRET)\n    .update(ts + "." + req.body.toString()).digest("hex");\n  const fresh = Math.abs(Date.now() / 1000 - Number(ts)) < 300;\n  const ok = fresh && sig.length === expected.length &&\n    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));\n  if (!ok) return res.sendStatus(401);\n  const event = JSON.parse(req.body); // { id, type: "bot.crashed", created, data: { bot, detail } }\n  res.sendStatus(200);\n});`)}
     </div>
   </div></div>`;
 
   if (!state.user) return;
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : 'never');
+  let info = { limits: { pro: false }, pass: {} };
 
   const drawKeys = async () => {
     try {
-      const r = await api('/api/account/keys');
-      $('#keyList').innerHTML = r.keys.length
-        ? r.keys.map((k) => `
+      info = await api('/api/account/keys');
+      const L = info.limits;
+      const pass = info.pass || {};
+      $('#passCard').innerHTML = `
+        <div class="card pass-card" style="margin-bottom:18px">
+          <div class="card-head"><h3>API Pass ${L.pro ? '<span class="chip on">Active' + (pass.daysLeft ? ' &middot; ' + pass.daysLeft + ' days left' : '') + '</span>' : `<span class="chip">$${pass.priceUsd != null ? pass.priceUsd : 5}/month</span>`}</h3>
+            <a class="btn ${L.pro ? '' : 'btn-primary'} btn-sm" href="#/pay?buy=api">${L.pro ? 'Renew' : 'Get the API Pass'}</a></div>
+          <p class="pay-note">Free: read-only access, 1 key, 30 requests/min, 24-hour uptime. <b>With the pass:</b> start/stop/restart, create and delete bots, WhatsApp pairing for your customers, env vars over the API, signed webhooks, live log streaming, 30-day uptime and resource history, 5 keys with expiry and IP allowlist, 600 requests/min. Crash alerts, custom bot settings and uptime history are included too.</p>
+        </div>`;
+      $('#keyList').innerHTML = info.keys.length
+        ? info.keys.map((k) => `
           <div class="key-row">
             <div><b>${esc(k.name)}</b> <span class="chip ${k.scope === 'write' ? '' : 'on'}">${k.scope}</span><br>
-              <small><code>${esc(k.preview)}</code> &middot; created ${esc(timeAgo(Date.parse(k.createdAt)))} &middot; ${k.lastUsedAt ? 'used ' + esc(timeAgo(Date.parse(k.lastUsedAt))) : 'never used'}</small></div>
+              <small><code>${esc(k.preview)}</code> &middot; created ${esc(timeAgo(Date.parse(k.createdAt)))} &middot; ${k.lastUsedAt ? 'used ' + esc(timeAgo(Date.parse(k.lastUsedAt))) : 'never used'}
+              &middot; expires ${esc(fmtDate(k.expiresAt))}${k.allowedIps.length ? ' &middot; IPs: ' + esc(k.allowedIps.join(', ')) : ''}<br>
+              Requests: ${k.usage.today} today &middot; ${k.usage.last7d} in 7 days &middot; ${k.usage.last30d} in 30 days</small></div>
             <button class="btn btn-sm btn-danger" data-revoke="${esc(k.id)}">Revoke</button>
           </div>`).join('')
         : '<p class="pay-note">No keys yet.</p>';
       $$('[data-revoke]').forEach((b) => (b.onclick = async () => {
         if (!confirm('Revoke this key? Anything using it stops working immediately.')) return;
         try { await api('/api/account/keys/' + b.dataset.revoke, { method: 'DELETE' }); toast('Key revoked'); drawKeys(); }
-        catch (e) { toast(e.message, 'error'); }
+        catch (e) { toast(e.message, 'err'); }
       }));
+      ['keyExp', 'keyIps', 'whUrl', 'whEvents', 'whCreate'].forEach((id) => { const el = $('#' + id); if (el) el.disabled = !L.pro; });
     } catch (e) { $('#keyList').textContent = e.message; }
   };
+
+  const drawHooks = async () => {
+    try {
+      const r = await api('/api/account/webhooks');
+      $('#whList').innerHTML = r.webhooks.length
+        ? r.webhooks.map((w) => `
+          <div class="key-row">
+            <div><b style="word-break:break-all">${esc(w.url)}</b> <span class="chip ${w.active ? 'on' : ''}">${w.active ? 'active' : 'paused'}</span><br>
+              <small>${esc(w.events.join(', '))}<br>Last delivery: ${w.lastDeliveryAt ? esc(timeAgo(Date.parse(w.lastDeliveryAt))) + ' (' + esc(w.lastStatus) + ')' : 'none yet'}${w.consecutiveFailures ? ' &middot; ' + w.consecutiveFailures + ' failures in a row' : ''}</small></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-sm" data-whtest="${esc(w.id)}">Send test</button>
+              <button class="btn btn-sm" data-whtoggle="${esc(w.id)}" data-on="${w.active ? 1 : 0}">${w.active ? 'Pause' : 'Resume'}</button>
+              <button class="btn btn-sm btn-danger" data-whdel="${esc(w.id)}">Delete</button>
+            </div>
+          </div>`).join('')
+        : `<p class="pay-note">${r.limits.pro ? 'No webhooks yet.' : 'Webhooks are part of the API Pass.'}</p>`;
+      $$('[data-whtest]').forEach((b) => (b.onclick = async () => {
+        b.disabled = true;
+        try { const t = await api(`/api/account/webhooks/${b.dataset.whtest}/test`, { method: 'POST' }); toast(t.ok ? 'Test delivered (HTTP ' + t.status + ')' : 'Test failed: ' + (t.error || 'no response'), t.ok ? 'ok' : 'err'); drawHooks(); }
+        catch (e) { toast(e.message, 'err'); b.disabled = false; }
+      }));
+      $$('[data-whtoggle]').forEach((b) => (b.onclick = async () => {
+        try { await api(`/api/account/webhooks/${b.dataset.whtoggle}/${b.dataset.on === '1' ? 'disable' : 'enable'}`, { method: 'POST' }); drawHooks(); }
+        catch (e) { toast(e.message, 'err'); }
+      }));
+      $$('[data-whdel]').forEach((b) => (b.onclick = async () => {
+        if (!confirm('Delete this webhook?')) return;
+        try { await api('/api/account/webhooks/' + b.dataset.whdel, { method: 'DELETE' }); drawHooks(); }
+        catch (e) { toast(e.message, 'err'); }
+      }));
+    } catch (e) { $('#whList').textContent = e.message; }
+  };
   drawKeys();
+  drawHooks();
+
+  const showSecret = (boxSel, title, secret) => {
+    const box = $(boxSel);
+    box.classList.add('show');
+    box.innerHTML = `<b>${esc(title)}</b><br><code style="word-break:break-all;user-select:all">${esc(secret)}</code> <button class="btn btn-sm" data-copy>Copy</button>`;
+    box.querySelector('[data-copy]').onclick = () => navigator.clipboard.writeText(secret).then(() => toast('Copied'));
+  };
 
   $('#keyCreate').onclick = async () => {
     const err = $('#keyErr'); err.classList.remove('show');
     try {
-      const r = await api('/api/account/keys', { method: 'POST', body: { name: $('#keyName').value, scope: $('#keyScope').value } });
-      const box = $('#newKeyBox');
-      box.classList.add('show');
-      box.innerHTML = `<b>Copy your new key now. You will not see it again.</b><br><code id="newKey" style="word-break:break-all;user-select:all">${esc(r.key)}</code> <button class="btn btn-sm" id="copyKey">Copy</button>`;
-      $('#copyKey').onclick = () => { navigator.clipboard.writeText(r.key).then(() => toast('Copied')); };
-      $('#keyName').value = '';
+      const body = { name: $('#keyName').value, scope: $('#keyScope').value };
+      if ($('#keyExp').value) body.expiresInDays = Number($('#keyExp').value);
+      if ($('#keyIps').value.trim()) body.allowedIps = $('#keyIps').value;
+      const r = await api('/api/account/keys', { method: 'POST', body });
+      showSecret('#newKeyBox', 'Copy your new key now. You will not see it again.', r.key);
+      ['keyName', 'keyExp', 'keyIps'].forEach((id) => { $('#' + id).value = ''; });
       drawKeys();
+    } catch (e) { err.textContent = e.message; err.classList.add('show'); }
+  };
+
+  $('#whCreate').onclick = async () => {
+    const err = $('#whErr'); err.classList.remove('show');
+    try {
+      const body = { url: $('#whUrl').value.trim() };
+      const evs = $('#whEvents').value.split(/[\s,]+/).filter(Boolean);
+      if (evs.length) body.events = evs;
+      const r = await api('/api/account/webhooks', { method: 'POST', body });
+      showSecret('#newWhBox', 'Signing secret. Copy it now, it is not shown again.', r.secret);
+      $('#whUrl').value = ''; $('#whEvents').value = '';
+      drawHooks();
     } catch (e) { err.textContent = e.message; err.classList.add('show'); }
   };
 }
@@ -1660,6 +1763,7 @@ async function adminUsers(el) {
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"envvars","grantFeatureDays":30}' title="Grant 30 days of Custom bot settings">+env vars</button>
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"alerts","grantFeatureDays":30}' title="Grant 30 days of Crash alerts">+alerts</button>
                   <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"uptime","grantFeatureDays":30}' title="Grant 30 days of Uptime history">+uptime</button>
+                  <button class="btn btn-sm" data-ugrant="${u.id}" data-body='{"grantFeature":"api","grantFeatureDays":30}' title="Grant 30 days of the API Pass">+API</button>
                   ${u.id !== state.user.id ? `<button class="btn btn-sm btn-danger" data-udel="${u.id}">Delete</button>` : ''}
                 </td>
               </tr>`).join('')}
