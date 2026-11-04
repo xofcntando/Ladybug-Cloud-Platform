@@ -11,6 +11,7 @@ const axios = require('axios');
 const ffmpegPath = require('ffmpeg-static');
 const APIs = require('../../utils/api');
 const config = require('../../config');
+const { ytdlpVideo, hasCookies } = require('../../utils/ytdlp');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const YT_API = config.mediaApiUrl;
@@ -152,11 +153,19 @@ async function resolveVideo({ url, query }) {
     if (!videoUrl) throw new Error('No videos found');
   }
 
+  const localYtdlp = ['yt-dlp (local)', async () => {
+    const v = await ytdlpVideo(toYouTubeWatchUrl(videoUrl));
+    return { title: v.title || 'Video', buffer: v.buffer, sourceUrl: videoUrl };
+  }];
+  // Local yt-dlp doesn't depend on shared API keys (which hit 429 / daily limits), so it is the
+  // reliable path. With cookies configured it goes first; otherwise right after the quick APIs.
   const steps = [
-    ['Prince', () => princeVideoDownload(videoUrl)],
-    ['Hector', () => hectorVideoDownload(videoUrl)],
     ['Ladybug', () => ladybugVideoDownload({ url: videoUrl })],
+    ['Prince', () => princeVideoDownload(videoUrl)],
+    localYtdlp,
+    ['Hector', () => hectorVideoDownload(videoUrl)],
   ];
+  if (hasCookies()) steps.unshift(steps.splice(2, 1)[0]);
   let lastError;
   for (const [name, run] of steps) {
     try {
@@ -232,7 +241,7 @@ async function toWhatsAppMp4(input, output) {
   await runFfmpeg(args);
 }
 
-async function sendVideo(sock, jid, msg, videoUrl, title) {
+async function sendVideoBuffer(sock, jid, msg, source, title) {
   const botName = config.botName;
   const fileName = `${(title || 'video').replace(/[^\w\s-]/g, '').trim() || 'video'}.mp4`;
   const caption = `*${title || 'Video'}*\n\n> *_Downloaded by ${botName}_*`;
@@ -241,14 +250,6 @@ async function sendVideo(sock, jid, msg, videoUrl, title) {
   const output = path.join(os.tmpdir(), `ytv-${stamp}-wa.mp4`);
 
   try {
-    const { data } = await axios.get(videoUrl, {
-      responseType: 'arraybuffer',
-      timeout: 180000,
-      maxContentLength: 80 * 1024 * 1024,
-      maxBodyLength: 80 * 1024 * 1024,
-      headers: { 'User-Agent': UA, Accept: 'video/mp4,video/*,*/*' },
-    });
-    const source = Buffer.from(data);
     if (!looksLikeMedia(source)) throw new Error('Download was not a video file');
     fs.writeFileSync(input, source);
     await toWhatsAppMp4(input, output);
@@ -265,6 +266,17 @@ async function sendVideo(sock, jid, msg, videoUrl, title) {
       if (fs.existsSync(file)) fs.unlinkSync(file);
     }
   }
+}
+
+async function sendVideo(sock, jid, msg, videoUrl, title) {
+  const { data } = await axios.get(videoUrl, {
+    responseType: 'arraybuffer',
+    timeout: 180000,
+    maxContentLength: 80 * 1024 * 1024,
+    maxBodyLength: 80 * 1024 * 1024,
+    headers: { 'User-Agent': UA, Accept: 'video/mp4,video/*,*/*' },
+  });
+  await sendVideoBuffer(sock, jid, msg, Buffer.from(data), title);
 }
 
 module.exports = {
@@ -318,11 +330,14 @@ module.exports = {
         query: isYouTubeUrl(query) ? undefined : query,
       });
 
-      if (!dl?.dl_url || !/^https?:\/\//i.test(dl.dl_url)) {
-        throw new Error('Invalid download response');
+      if (dl?.buffer) {
+        await sendVideoBuffer(sock, from, msg, dl.buffer, dl.title || preview.title);
+      } else {
+        if (!dl?.dl_url || !/^https?:\/\//i.test(dl.dl_url)) {
+          throw new Error('Invalid download response');
+        }
+        await sendVideo(sock, from, msg, dl.dl_url, dl.title || preview.title);
       }
-
-      await sendVideo(sock, from, msg, dl.dl_url, dl.title || preview.title);
     } catch (err) {
       console.error('[video]', err?.message || err);
       const from = extra?.from || msg.key.remoteJid;

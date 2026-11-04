@@ -185,4 +185,40 @@ async function ytdlpAudio(url, { timeoutMs = 180000 } = {}) {
   }
 }
 
-module.exports = { ytdlpAudio, hasCookies, ensureBinary };
+/**
+ * Download a YouTube video as MP4 (max 720p, <=64 MB so WhatsApp accepts it).
+ * @returns {{ buffer: Buffer, title: string|null }}
+ */
+async function ytdlpVideo(url, { timeoutMs = 240000, maxHeight = 720 } = {}) {
+  const bin = await ensureBinary();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ytdlp-v-'));
+  const cookies = getCookiesFile();
+
+  const args = [
+    '--no-playlist',
+    '--no-warnings',
+    '--no-progress',
+    '--no-cache-dir',
+    '--max-filesize', '64M',
+    '-f', `bv*[height<=${maxHeight}][ext=mp4]+ba[ext=m4a]/b[height<=${maxHeight}][ext=mp4]/bv*[height<=${maxHeight}]+ba/b[height<=${maxHeight}]/b`,
+    '--merge-output-format', 'mp4',
+    '--print', 'after_move:%(title)s',
+    '-o', path.join(dir, 'video.%(ext)s'),
+  ];
+  if (ffmpegPath) args.push('--ffmpeg-location', ffmpegPath);
+  if (cookies) args.push('--cookies', cookies);
+  args.push(url);
+
+  try {
+    const { stdout } = await run(bin, args, timeoutMs);
+    const file = fs.readdirSync(dir).find((f) => f.startsWith('video.'));
+    if (!file) throw new Error('yt-dlp produced no file');
+    const title = (stdout.trim().split('\n').pop() || '').trim();
+    return { buffer: fs.readFileSync(path.join(dir, file)), title: title && title !== 'NA' ? title : null };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    if (cookies) { try { fs.unlinkSync(cookies); } catch {} }
+  }
+}
+
+module.exports = { ytdlpAudio, ytdlpVideo, hasCookies, ensureBinary };
