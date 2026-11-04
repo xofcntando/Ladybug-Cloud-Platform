@@ -190,8 +190,21 @@ const sendGroupCard = async (sock, groupId, payload, groupMetadata) => {
 };
 
 // Helper functions
+// The linked WhatsApp account itself is always the owner, even when OWNER_NUMBER was never set.
+const selfIds = new Set();
+const rememberSelf = (sock) => {
+  try {
+    const u = sock && sock.user;
+    if (!u) return;
+    for (const id of [u.id, u.lid]) {
+      if (id) selfIds.add(String(id).split(':')[0].split('@')[0]);
+    }
+  } catch (_) {}
+};
+
 const isOwner = (sender) => {
   if (!sender) return false;
+  if (selfIds.has(String(sender).split(':')[0].split('@')[0])) return true;
   
   // Normalize sender JID to handle LID
   const normalizedSender = normalizeJidWithLid(sender);
@@ -455,6 +468,7 @@ const handleMessage = async (sock, msg) => {
     // Debug log removed
     
     if (!msg.message) return;
+    rememberSelf(sock);
     rememberFromMessage(msg);
     
     const from = msg.key.remoteJid;
