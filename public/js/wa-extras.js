@@ -649,6 +649,82 @@
   const drafts = { map: {}, cur: null, key: '', timer: 0 };
   function saveDrafts() { clearTimeout(drafts.timer); drafts.timer = setTimeout(() => store.set(drafts.key, drafts.map), 400); }
 
+  /* ================================================================ scheduled messages (send later) */
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function toLocalInput(ts) { const d = new Date(ts); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  function fmtWhen(ts) { return new Date(ts).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+
+  async function scheduleDialog() {
+    const { S, base, api, toast, esc, dialog } = CTX;
+    if (!S.jid) { toast('Open a chat first', 'err'); return; }
+    const chat = (S.chats || []).find((c) => c.jid === S.jid) || {};
+    const ta = CTX.$('#waText');
+    const d = dialog(
+      '<h3>Schedule message</h3>' +
+      '<div class="wa-sch-to">To: <b>' + esc(chat.name || S.jid.split('@')[0]) + '</b></div>' +
+      '<textarea id="waSchText" rows="4" maxlength="4096" placeholder="Message to send later"></textarea>' +
+      '<div class="wa-sch-presets">' +
+        '<button type="button" class="wa-chip" data-in="3600000">In 1 hour</button>' +
+        '<button type="button" class="wa-chip" data-in="10800000">In 3 hours</button>' +
+        '<button type="button" class="wa-chip" data-tom="1">Tomorrow 9:00</button>' +
+      '</div>' +
+      '<input class="wa-dialog-input" id="waSchWhen" type="datetime-local" />' +
+      '<div class="wa-sch-note">Sent from your bot number at that time. The bot must be running; if it is offline for more than 15 minutes after the time, the message is skipped.</div>' +
+      '<div class="wa-dialog-act"><button class="wa-btn ghost" data-x>Close</button><button class="wa-btn" data-ok>Schedule</button></div>' +
+      '<h4 class="wa-sch-h">Scheduled for this chat</h4><div id="waSchList" class="wa-sch-list"><div class="chat-empty">Loading...</div></div>'
+    );
+    const $d = (q) => d.querySelector(q);
+    $d('#waSchText').value = ta ? ta.value : '';
+    const when = $d('#waSchWhen');
+    const now = Date.now();
+    when.min = toLocalInput(now + 60000);
+    when.value = toLocalInput(now + 3600000);
+    d.querySelectorAll('.wa-chip').forEach((b) => {
+      b.onclick = () => {
+        if (b.dataset.in) when.value = toLocalInput(Date.now() + Number(b.dataset.in));
+        else { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); when.value = toLocalInput(t.getTime()); }
+      };
+    });
+
+    async function paintList() {
+      const box = $d('#waSchList');
+      try {
+        const r = await api(base + '/scheduled?jid=' + encodeURIComponent(S.jid));
+        const items = (r.items || []).filter((j) => j.status === 'pending' || Date.now() - (j.sentAt || j.at) < 86400000);
+        box.innerHTML = items.map((j) =>
+          '<div class="wa-sch-row" data-s="' + esc(j.status) + '"><div><div class="wa-sch-when">' + esc(fmtWhen(j.at)) + ' <span class="wa-sch-badge">' + esc(j.status) + '</span></div>' +
+          '<div class="wa-sch-txt">' + esc(j.text).slice(0, 140) + '</div>' + (j.error && j.status !== 'sent' ? '<div class="wa-sch-err">' + esc(j.error) + '</div>' : '') + '</div>' +
+          (j.status === 'pending' ? '<button class="wa-btn ghost" data-c="' + esc(j.id) + '">Cancel</button>' : '') + '</div>'
+        ).join('') || '<div class="chat-empty">Nothing scheduled for this chat.</div>';
+        box.querySelectorAll('[data-c]').forEach((b) => {
+          b.onclick = async () => {
+            try { await api(base + '/scheduled/' + b.dataset.c, { method: 'DELETE' }); toast('Cancelled'); paintList(); }
+            catch (er) { toast(er.message, 'err'); }
+          };
+        });
+      } catch (er) { box.innerHTML = '<div class="chat-empty">' + esc(er.message) + '</div>'; }
+    }
+
+    $d('[data-x]').onclick = () => d.remove();
+    $d('[data-ok]').onclick = async () => {
+      const text = $d('#waSchText').value.trim();
+      const at = new Date(when.value).getTime();
+      if (!text) { toast('Write a message first', 'err'); return; }
+      if (!Number.isFinite(at)) { toast('Pick a date and time', 'err'); return; }
+      const btn = $d('[data-ok]'); btn.disabled = true;
+      try {
+        await api(base + '/scheduled', { method: 'POST', body: { jid: S.jid, chatName: chat.name || '', text, at, quotedId: S.replyTo ? S.replyTo.id : undefined } });
+        toast('Scheduled for ' + fmtWhen(at));
+        if (ta && ta.value.trim() === text) { ta.value = ''; ta.dispatchEvent(new Event('input')); }
+        $d('#waSchText').value = '';
+        paintList();
+      } catch (er) { toast(er.message, 'err'); }
+      btn.disabled = false;
+    };
+    paintList();
+    $d('#waSchText').focus();
+  }
+
   /* ================================================================ init */
   let CTX = null;
   let origIcon = null;
@@ -690,6 +766,11 @@
       mic.type = 'button'; mic.id = 'waMic'; mic.className = 'wa-send wa-mic'; mic.title = 'Record a voice note'; mic.innerHTML = ICON.mic;
       mic.onclick = startRecording;
       sendBtn.before(mic);
+      const sch = document.createElement('button');
+      sch.type = 'button'; sch.className = 'wa-icon-btn'; sch.id = 'waSchedBtn'; sch.title = 'Schedule message (send later)';
+      sch.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm.5-13H11v6l5.2 3.1.8-1.3-4.5-2.7V7z"/></svg>';
+      sch.onclick = scheduleDialog;
+      mic.before(sch);
       const fb = document.createElement('button');
       fb.type = 'button'; fb.className = 'wa-icon-btn'; fb.id = 'waFmtBtn'; fb.title = 'Text formatting'; fb.innerHTML = '<span style="font-weight:700;font-size:15px">Aa</span>';
       const ew = form.querySelector('.wa-emoji-wrap');

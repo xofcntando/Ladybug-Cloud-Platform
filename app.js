@@ -1153,6 +1153,11 @@ app.post('/api/bots/:id/web/sendvoice', requireAuth, (req, res) => { const b = o
 app.get('/api/bots/:id/web/search', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.search(b, req, res); });
 app.get('/api/bots/:id/web/media', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.media(b, req, res); });
 app.post('/api/bots/:id/web/sendmedia', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendMedia(b, req, res); });
+const scheduled = require('./lib/scheduled');
+scheduled.start();
+app.get('/api/bots/:id/web/scheduled', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) res.json({ items: scheduled.list(b.id, req.query.jid ? String(req.query.jid) : undefined) }); });
+app.post('/api/bots/:id/web/scheduled', requireAuth, (req, res) => { const b = ownBot(req, res); if (!b) return; try { res.json(scheduled.create(b, req.user, req.body)); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } });
+app.delete('/api/bots/:id/web/scheduled/:jobId', requireAuth, (req, res) => { const b = ownBot(req, res); if (!b) return; try { res.json(scheduled.cancel(b, req.params.jobId)); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } });
 app.post('/api/bots/:id/web/delete', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deleteMsg(b, req, res); });
 app.post('/api/bots/:id/web/edit', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.editMsg(b, req, res); });
 app.get('/api/bots/:id/web/group', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.group(b, req, res); });
