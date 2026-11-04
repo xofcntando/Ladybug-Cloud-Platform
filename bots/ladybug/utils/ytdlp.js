@@ -11,6 +11,9 @@
  *   2. YT_COOKIES       - raw cookies.txt contents
  *   3. YT_COOKIES_FILE  - path to a cookies file
  *   4. bots/ladybug/cookies.txt (git-ignored)
+ *
+ * Optional: YT_PROXY (e.g. http://user:pass@host:port) routes yt-dlp through a residential/
+ * non-datacenter proxy when YouTube blocks the host IP.
  */
 
 const fs = require('fs');
@@ -168,6 +171,7 @@ async function ytdlpAudio(url, { timeoutMs = 180000 } = {}) {
   ];
   if (ffmpegPath) args.push('--ffmpeg-location', ffmpegPath);
   if (cookies) args.push('--cookies', cookies);
+  if (process.env.YT_PROXY) args.push('--proxy', process.env.YT_PROXY);
   args.push(url);
 
   try {
@@ -210,6 +214,7 @@ async function ytdlpVideo(url, { timeoutMs = 240000, maxHeight = 720 } = {}) {
   ];
   if (ffmpegPath) args.push('--ffmpeg-location', ffmpegPath);
   if (cookies) args.push('--cookies', cookies);
+  if (process.env.YT_PROXY) args.push('--proxy', process.env.YT_PROXY);
   args.push(url);
 
   try {
