@@ -3,3 +3,7 @@ data/
 .env
 *.log
 .DS_Store
+
+# YouTube login cookies - never commit
+cookies.txt
+bots/ladybug/cookies.txt

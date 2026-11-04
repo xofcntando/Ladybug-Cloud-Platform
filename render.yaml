@@ -27,6 +27,10 @@ services:
       # logins so they survive Render redeploys and sleep. Paste it in the dashboard.
       - key: MONGODB_URI
         sync: false
+      # Optional: base64 of a YouTube cookies.txt (Netscape format). Makes the local
+      # yt-dlp fallback for .song reliable when YouTube blocks the host IP.
+      - key: YT_COOKIES_B64
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: FREE_BOT_LIMIT

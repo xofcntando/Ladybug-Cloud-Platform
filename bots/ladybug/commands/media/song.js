@@ -9,6 +9,7 @@ const axios = require('axios');
 const APIs = require('../../utils/api');
 const { toAudio } = require('../../utils/converter');
 const config = require('../../config');
+const { ytdlpAudio, hasCookies } = require('../../utils/ytdlp');
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -302,6 +303,8 @@ module.exports = {
       let downloadSuccess = false;
 
       // Hector first, Ladybug second. Prince and the rest are fallbacks. Prexzy googlevideo URLs are IP-locked → skip early.
+      // Local yt-dlp runs on this host (no third-party cookies needed). With cookies configured it goes first.
+      const localYtdlp = { name: 'yt-dlp (local)', method: () => ytdlpAudio(video.url) };
       const apiMethods = [
         { name: 'Hector', method: () => hectorSongDownload(video.url) },
         { name: 'Ladybug API', method: () => ladybugSongDownload(video.url) },
@@ -312,10 +315,26 @@ module.exports = {
         { name: 'Okatsu', method: () => APIs.getOkatsuDownloadByUrl(video.url) },
         { name: 'Izumi', method: () => APIs.getIzumiDownloadByUrl(video.url) },
       ];
+      if (hasCookies()) apiMethods.unshift(localYtdlp);
+      else apiMethods.push(localYtdlp);
 
       for (const apiMethod of apiMethods) {
         try {
           audioData = await apiMethod.method();
+
+          // yt-dlp returns the audio itself rather than a URL
+          if (audioData?.buffer) {
+            audioBuffer = audioData.buffer;
+            if (!detectAudioFormat(audioBuffer)) {
+              console.log(`${apiMethod.name} returned non-audio (${audioBuffer.length} bytes)`);
+              audioBuffer = null;
+              continue;
+            }
+            downloadSuccess = true;
+            console.log(`[song] OK via ${apiMethod.name} (${audioBuffer.length} bytes)`);
+            break;
+          }
+
           const audioUrl = audioData.download || audioData.audio || audioData.downloadUrl || audioData.dl || audioData.url;
 
           if (!audioUrl) {
@@ -363,9 +382,7 @@ module.exports = {
       }
 
       if (!downloadSuccess || !audioBuffer) {
-        throw new Error(
-          'All download sources failed. Ladybug API needs fresh YouTube cookies on Render (cookies.txt).'
-        );
+        throw new Error('All download sources failed');
       }
 
       if (!audioBuffer || audioBuffer.length === 0) {
@@ -424,18 +441,19 @@ module.exports = {
       console.error('Song command error:', err);
 
       let errorMessage = '❌ Failed to download song.';
-      if (err.message && err.message.includes('cookies')) {
-        errorMessage =
-          '❌ YouTube blocked the download API. Update `cookies.txt` (YouTube login) on the Ladybug API host and redeploy.';
-      } else if (err.message && err.message.includes('blocked')) {
-        errorMessage =
-          '❌ Download blocked. The content may be unavailable in your region or due to legal restrictions.';
-      } else if (err.response?.status === 451 || err.status === 451) {
+      if (err.response?.status === 451 || err.status === 451) {
         errorMessage =
           '❌ Content unavailable (451). This may be due to legal restrictions or regional blocking.';
       } else if (err.message && err.message.includes('All download sources failed')) {
         errorMessage =
-          '❌ All download sources failed. Ladybug API needs fresh YouTube cookies on Render.';
+          '❌ Could not download this song right now. YouTube may be blocking the server - please try again later or try a different song.';
+        // Operator hint goes to the logs, not to chat users
+        console.error(
+          '[song] All sources failed. Set YT_COOKIES_B64 (base64 of a YouTube cookies.txt) on the host and redeploy.'
+        );
+      } else if (err.message && err.message.includes('blocked')) {
+        errorMessage =
+          '❌ Download blocked. The content may be unavailable in your region or due to legal restrictions.';
       }
 
       await sock.sendMessage(msg.key.remoteJid, { text: errorMessage }, { quoted: msg });
