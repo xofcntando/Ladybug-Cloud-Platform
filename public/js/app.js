@@ -961,7 +961,7 @@ function botCard(b) {
         ? `<button class="btn btn-danger-solid" data-act="stop">Stop</button>
            <button class="btn" data-act="restart">Restart</button>`
         : `<button class="btn btn-primary" data-act="start">${b.status === 'starting' || b.status === 'stopping' ? '...' : 'Start bot'}</button>`}
-      <button class="btn btn-ghost" data-act="web" title="Read and send WhatsApp messages from your bot number">WhatsApp Web</button>
+      <button class="btn btn-ghost" data-act="web" title="Open WhatsApp for this bot number">WhatsApp</button>
       <button class="btn btn-ghost" data-act="logs">Logs</button>
       <button class="btn btn-ghost" data-act="uptime" title="Uptime history">Uptime</button>
       <button class="btn btn-ghost" data-act="env" title="Custom bot settings (paid)">Settings${b.envCount ? ` (${b.envCount})` : ''}</button>
@@ -1219,19 +1219,30 @@ async function renderWebConsole() {
   try { bot = (await api('/api/bots')).bots.find((b) => b.id === botId); } catch (e) { /* handled below */ }
   if (!bot) return (location.hash = '#/dashboard');
 
+  document.title = 'WhatsApp - by Ntandomods';
+  const WAI = {"chat": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M19.8 4H4.2C3 4 2 5 2 6.2v15.4l4-4h13.8c1.2 0 2.2-1 2.2-2.2V6.2C22 5 21 4 19.8 4zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z\"/></svg>", "bots": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M12 2a2 2 0 0 1 1 3.7V7h4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h4V5.7A2 2 0 0 1 12 2zM8.5 12a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z\"/></svg>", "moon": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.4A5.5 5.5 0 0 1 13.4 3.1C13 3 12.5 3 12 3z\"/></svg>", "new": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M19.2 3H4.8C3.8 3 3 3.8 3 4.8v14.4L7 15h12.2c1 0 1.8-.8 1.8-1.8V4.8c0-1-.8-1.8-1.8-1.8zM16 10h-3v3h-2v-3H8V8h3V5h2v3h3v2z\" transform=\"translate(0 1.5)\"/></svg>", "search": "<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M15.9 14.3H15l-.3-.3c1-1.1 1.6-2.7 1.6-4.3 0-3.7-3-6.7-6.7-6.7S3 6 3 9.7s3 6.7 6.7 6.7c1.6 0 3.2-.6 4.3-1.6l.3.3v.8l5.1 5.1 1.5-1.5-5-5.2zm-6.2 0a4.6 4.6 0 1 1 0-9.200 4.600 4.600 0 0 1 0 9.200z\"/></svg>", "send": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M1.1 21.8 23 12.4 1.1 3l-.1 7.300 15.600 2.100L1 14.500z\"/></svg>", "emoji": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\"><path fill=\"currentColor\" d=\"M9.15 11.4a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zm5.7 0a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM12 17.5c2 0 3.700-1.100 4.500-2.700H7.500c.8 1.600 2.500 2.700 4.500 2.700zM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z\"/></svg>", "lock": "<svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\"><path fill=\"currentColor\" d=\"M12 1a5 5 0 0 0-5 5v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v2H9V6z\"/></svg>"};
+  let waTheme = 'dark';
+  try { waTheme = localStorage.getItem('wa_theme') || 'dark'; } catch (e) { /* ignore */ }
+  const myInitial = esc((bot.name || 'W').charAt(0).toUpperCase());
   $('#view').innerHTML = `
-  <div class="app"><div class="wrap">
-    <div class="app-head">
-      <div><h1>WhatsApp Web</h1><p>${esc(bot.name)} · read and reply as your bot number. Messages are shown live and never stored on the server.</p></div>
-      <a class="btn" href="#/dashboard">Back to bots</a>
-    </div>
-    <div class="wa-status" id="waStatus"><span class="wa-dot"></span><span>Checking connection…</span></div>
-    <div class="wa-shell card" id="waShell">
+  <div class="wa-app" id="waApp" data-theme="${waTheme}">
+    <nav class="wa-rail">
+      <a class="wa-rail-btn on" title="Chats">${WAI.chat}</a>
+      <a class="wa-rail-btn" href="#/dashboard" title="Back to my bots">${WAI.bots}</a>
+      <span class="wa-rail-grow"></span>
+      <button class="wa-rail-btn" id="waTheme" title="Switch light / dark theme">${WAI.moon}</button>
+      <div class="wa-rail-me" title="${esc(bot.name)}">${myInitial}</div>
+    </nav>
+    <div class="wa-shell" id="waShell">
       <aside class="wa-side">
-        <div class="wa-tools">
-          <input class="input" id="waSearch" placeholder="Search chats" />
-          <button class="btn btn-sm btn-primary" id="waNew" title="Start a new chat">New</button>
-        </div>
+        <header class="wa-side-head">
+          <div class="wa-brand"><b>WhatsApp</b><small>by Ntandomods</small></div>
+          <div class="wa-side-icons">
+            <button class="wa-icon-btn" id="waNew" title="New chat">${WAI.new}</button>
+          </div>
+        </header>
+        <div class="wa-status" id="waStatus"><span class="wa-dot"></span><span>Checking connection…</span></div>
+        <div class="wa-searchbar"><div class="wa-searchbox">${WAI.search}<input id="waSearch" placeholder="Search or start a new chat" autocomplete="off" /></div></div>
         <div class="wa-tabs" id="waTabs">
           <button data-tab="all" class="on">All</button>
           <button data-tab="online">Online <i id="waOnlineN">0</i></button>
@@ -1239,18 +1250,47 @@ async function renderWebConsole() {
         </div>
         <div class="wa-list" id="waList"><div class="chat-empty">Loading…</div></div>
       </aside>
-      <section class="wa-main">
-        <div class="wa-top" id="waTop"><span class="hint">Select a chat</span></div>
+      <section class="wa-main" id="waMain">
+        <div class="wa-empty" id="waEmpty">
+          <img src="/img/logo.png" alt="" class="wa-empty-logo" />
+          <h2>WhatsApp - by Ntandomods</h2>
+          <p>Send and receive messages as <b>${esc(bot.name)}</b>, live, from your browser.<br>Pick a chat on the left or start a new one.</p>
+          <div class="wa-empty-foot">${WAI.lock} Messages are shown live and never stored on the server</div>
+        </div>
+        <div class="wa-top" id="waTop"></div>
         <div class="wa-thread" id="waThread"></div>
         <div class="wa-reply" id="waReply" hidden></div>
         <form class="wa-compose" id="waForm" hidden>
-          <textarea class="input" id="waText" rows="1" maxlength="4096" placeholder="Type a message"></textarea>
-          <button class="btn btn-primary" type="submit">Send</button>
+          <div class="wa-emoji-wrap">
+            <button type="button" class="wa-icon-btn" id="waEmojiBtn" title="Emoji">${WAI.emoji}</button>
+            <div class="wa-emoji-pop" id="waEmojiPop" hidden></div>
+          </div>
+          <div class="wa-input-wrap"><textarea id="waText" rows="1" maxlength="4096" placeholder="Type a message"></textarea></div>
+          <button class="wa-send" type="submit" title="Send">${WAI.send}</button>
         </form>
       </section>
     </div>
-    <p class="hint" style="margin-top:10px">Sending is limited to 20 messages a minute per bot, a pace that keeps your number safe. Only people who message the bot (or that you start a chat with) appear here.</p>
-  </div></div>`;
+  </div>`;
+  const waApp = $('#waApp');
+  $('#waTheme').onclick = () => {
+    waTheme = waTheme === 'dark' ? 'light' : 'dark';
+    waApp.dataset.theme = waTheme;
+    try { localStorage.setItem('wa_theme', waTheme); } catch (e) { /* ignore */ }
+  };
+  {
+    const pop = $('#waEmojiPop');
+    pop.innerHTML = '😀 😂 🥹 😍 😘 😎 🤔 😅 😭 😡 👍 👎 🙏 👏 🙌 💪 🔥 ❤️ 💚 🎉 ✅ ❌ 🐞 👀 🤝 💯'.split(' ').map((e) => `<button type="button">${e}</button>`).join('');
+    $('#waEmojiBtn').onclick = (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; };
+    pop.onclick = (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      const ta = $('#waText');
+      ta.value += b.textContent;
+      ta.focus();
+      ta.dispatchEvent(new Event('input'));
+    };
+    document.addEventListener('click', (e) => { if (!e.target.closest('.wa-emoji-wrap')) pop.hidden = true; });
+  }
 
   const base = `/api/bots/${bot.id}/web`;
   const S = { chats: [], jid: null, msgs: [], replyTo: null, q: '', tab: 'all', conn: null, me: null, wa: null, groupSize: null, typingOn: false };
@@ -1293,7 +1333,9 @@ async function renderWebConsole() {
   };
   const hhmm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dayLabel = (t) => { const d = new Date(t * 1000); const n = new Date(); return d.toDateString() === n.toDateString() ? hhmm(t) : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); };
-  const tick = (m) => (m.fromMe ? `<span class="wa-tick ${m.status === 'read' ? 'read' : ''}">${m.status === 'delivered' || m.status === 'read' ? '✓✓' : '✓'}</span>` : '');
+  const TICK1 = '<svg viewBox="0 0 16 11" width="16" height="11"><path fill="currentColor" d="M11.1.7 4.800 8.200 2 5.500.9 6.600l3.900 3.900L12.300 1.800z"/></svg>';
+  const TICK2 = '<svg viewBox="0 0 16 11" width="16" height="11"><path fill="currentColor" d="m15.01 1.7-.9-.7a.4.4 0 0 0-.6.1L8.700 7.400a.4.4 0 0 1-.6 0L7.500 6.800l-.9 1 1.100 1.100c.4.4 1 .4 1.400 0l5.800-6.600a.4.4 0 0 0 .1-.6zM10.600 1.100l-.9-.7a.4.4 0 0 0-.6.1L4.800 6.600a.4.4 0 0 1-.6 0L1.900 4.300a.4.4 0 0 0-.6 0l-.8.9a.4.4 0 0 0 0 .6l3.100 3.100c.4.4 1 .4 1.400 0l5.700-6.700a.4.4 0 0 0 0-.6z"/></svg>';
+  const tick = (m) => (m.fromMe ? `<span class="wa-tick ${m.status === 'read' ? 'read' : ''}">${m.status === 'delivered' || m.status === 'read' ? TICK2 : TICK1}</span>` : '');
   const icon = { image: '🖼', video: '🎬', voice: '🎤', audio: '🎵', document: '📄', sticker: '✨', contact: '👤', location: '📍', poll: '📊' };
 
   function paintStatus() {
@@ -1352,7 +1394,7 @@ async function renderWebConsole() {
       <div class="wa-chat ${c.jid === S.jid ? 'active' : ''}" data-jid="${esc(c.jid)}">
         ${avatarHtml(c)}
         <div class="wa-chat-body">
-          <div class="wa-chat-row"><b>${esc(c.name)}${c.isGroup ? ' · group' : ''}</b><span>${c.lastTs ? dayLabel(c.lastTs) : ''}</span></div>
+          <div class="wa-chat-row"><b class="wa-name">${esc(c.name)}</b><span>${c.lastTs ? dayLabel(c.lastTs) : ''}</span></div>
           <div class="wa-chat-row">${last}${c.unread ? `<i class="wa-badge">${c.unread}</i>` : ''}</div>
         </div>
       </div>`;
@@ -1392,7 +1434,7 @@ async function renderWebConsole() {
     if (!top || !c || !S.jid) return;
     const line = presenceLine(c);
     const live = !c.isGroup && isOnline(c);
-    top.innerHTML = `<button class="btn btn-sm btn-ghost wa-back" id="waBack">←</button>${avatarHtml(c)}<div class="wa-who-top"><b>${esc(c.name)}</b><span class="wa-presence ${live ? 'live' : ''} ${eff(c).state === 'composing' ? 'typing' : ''}">${esc(line || S.jid.split('@')[0])}</span></div>`;
+    top.innerHTML = `<button class="wa-icon-btn wa-back" id="waBack" title="Back">←</button>${avatarHtml(c)}<div class="wa-who-top"><b>${esc(c.name)}</b><span class="wa-presence ${live ? 'live' : ''} ${eff(c).state === 'composing' ? 'typing' : ''}">${esc(line || S.jid.split('@')[0])}</span></div>`;
     $('#waBack').onclick = () => $('#waShell').classList.remove('chat-open');
   }
 
@@ -1447,6 +1489,7 @@ async function renderWebConsole() {
   async function openChat(jid) {
     S.jid = jid; S.replyTo = null; setReply(null);
     $('#waShell').classList.add('chat-open');
+    $('#waMain').classList.add('has-chat');
     try {
       const r = await api(`${base}/messages?jid=${encodeURIComponent(jid)}&limit=100`);
       S.msgs = r.messages; S.chat = r.chat;

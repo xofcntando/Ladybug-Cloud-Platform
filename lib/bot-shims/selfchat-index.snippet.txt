@@ -1,0 +1,18 @@
+      // Diagnostics: one short line per incoming message so "bot does not answer" can be traced from the logs.
+      try {
+        const peek = msg.message?.ephemeralMessage?.message || msg.message;
+        const peekText = peek?.conversation || peek?.extendedTextMessage?.text || peek?.imageMessage?.caption || peek?.videoMessage?.caption || '';
+        if (type === 'notify' || msg.key.fromMe) {
+          console.log(`[msg] type=${type} fromMe=${!!msg.key.fromMe} chat=${String(from).split('@')[0]}${String(from).includes('@lid') ? '(lid)' : ''} text="${String(peekText).slice(0, 30)}"`);
+        }
+      } catch (_) {}
+
+      // Only process "notify" type (new messages), skip "append" (old messages from history).
+      // Exception: WhatsApp often delivers messages YOU type on your phone (including the
+      // "Message yourself" chat) to a linked device as "append". Accept those when they are
+      // fresh (< 60s) and sent by this account, otherwise chatting with your own number never works.
+      if (type !== 'notify') {
+        const ts = Number(msg.messageTimestamp?.toNumber ? msg.messageTimestamp.toNumber() : msg.messageTimestamp) || 0;
+        const fresh = ts > 0 && Date.now() - ts * 1000 < 60 * 1000;
+        if (!(msg.key.fromMe && fresh)) continue;
+      }
