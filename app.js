@@ -16,6 +16,7 @@ const os = require('os');
 const db = require('./lib/store');
 const bots = require('./lib/bots');
 const installer = require('./lib/installer');
+try { console.log('[custom-commands] hook:', installer.ensureCustomCommands()); } catch (e) { console.error('[custom-commands] hook failed:', e.message); }
 const sessiongen = require('./lib/sessiongen');
 const FileSessionStore = require('./lib/session-store');
 const billing = require('./lib/billing');
@@ -846,6 +847,7 @@ function createBotFor(user, { name, sessionId }) {
 function deleteBotFor(bot) {
   bots.stop(bot.id);
   db.deleteBot(bot.id);
+  try { require('./lib/customcommands').purge(bot.id); } catch (e) { /* ignore */ }
   return { code: 200, body: { ok: true } };
 }
 

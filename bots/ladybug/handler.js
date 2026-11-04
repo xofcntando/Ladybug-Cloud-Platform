@@ -1017,7 +1017,7 @@ const handleMessage = async (sock, msg) => {
     const commandName = args.shift().toLowerCase();
     
     // Get command
-    const command = commands.get(commandName);
+    const command = require('./utils/customCommands').find(commandName) || commands.get(commandName);
     if (!command) return;
     
     // Suppressed group: members get no reply. Owner and group admins still can.
