@@ -941,3 +941,20 @@ pre.code-block { background: var(--surface-2); border: 1px solid var(--line); bo
 .key-row small { color: var(--muted); }
 .chip.pro { background: rgba(255, 190, 60, .14); border-color: rgba(255, 190, 60, .4); color: #ffcf6b; }
 .pass-card { border-color: rgba(255, 190, 60, .35); }
+
+/* ---- developers hub ---- */
+.dev-hero { padding: 8px 0 22px; }
+.dev-hero h1 { margin: 10px 0 8px; }
+.dev-hero p { color: var(--muted); max-width: 680px; line-height: 1.65; }
+.dev-powered { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 0; padding: 6px 12px 6px 8px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-2); font-size: 13.5px; color: var(--muted); }
+.dev-powered img, .dev-foot img { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; }
+.dev-powered b, .dev-foot b { color: var(--text, #fff); }
+.dev-jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.dev-sec { scroll-margin-top: 84px; }
+.dev-h { margin: 22px 0 6px; font-size: 15px; font-weight: 600; }
+.dev-step { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
+.dev-n { flex: 0 0 26px; height: 26px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+.dev-list { margin: 8px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.dev-list li { margin-bottom: 6px; }
+.dev-list b { color: var(--text, #fff); }
+.dev-foot { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 22px 0 8px; color: var(--muted); font-size: 13.5px; }

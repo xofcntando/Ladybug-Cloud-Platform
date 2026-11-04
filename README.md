@@ -204,6 +204,8 @@ Security headers on every response, gzip compression, per-IP rate limits (sign-i
 
 ## Public API (v1)
 
+> APIs powered by **Ntandomods Developers**. Every response carries `X-API-Provider: Ntandomods Developers`.
+
 Control your bots from scripts, CI or your own dashboard. Log in, open **API** in the top bar, create a key, and send it as a bearer token to `/api/v1`:
 
 ```bash
@@ -244,3 +246,12 @@ Reject timestamps older than 5 minutes. Failed deliveries are retried at 0s, 5s 
 ### Security
 
 Keys and webhook URLs are checked server-side: keys are stored as SHA-256 hashes and see only the owner's bots; webhook URLs must be public HTTPS (private ranges blocked); log output hides session IDs and env values; API keys cannot touch passwords, payments or the file drive.
+
+### WhatsApp-safety guardrails
+
+Automation that reconnects or re-pairs in a loop is a classic way to get numbers restricted, so the API enforces limits on top of the usual rate limit (HTTP 429 with `Retry-After` and `"guardrail":"whatsapp-safety"`):
+
+- Start / restart: 1 per 30 s and 6 per hour, per bot (stop is never limited).
+- Pairing: 5 per account and 2 per phone number, per hour.
+
+The Developers page (`#/developers`) has the full guide, including a "Avoid WhatsApp bans" checklist. Nothing can guarantee a number is never restricted; Ladybug is not an official WhatsApp product.
