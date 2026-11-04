@@ -302,21 +302,24 @@ module.exports = {
       let audioBuffer;
       let downloadSuccess = false;
 
-      // Hector first, Ladybug second. Prince and the rest are fallbacks. Prexzy googlevideo URLs are IP-locked → skip early.
       // Local yt-dlp runs on this host (no third-party cookies needed). With cookies configured it goes first.
       const localYtdlp = { name: 'yt-dlp (local)', method: () => ytdlpAudio(video.url) };
+      // Order matters: sources verified working first, local yt-dlp next (it does not depend on
+      // anyone else's API), then the long tail. Yupra/Okatsu/Izumi/EliteProTech were dead when
+      // last tested but are kept at the very end in case they come back.
       const apiMethods = [
-        { name: 'Hector', method: () => hectorSongDownload(video.url) },
-        { name: 'Ladybug API', method: () => ladybugSongDownload(video.url) },
+        { name: 'Ladybug API', method: () => ladybugSongDownload(video.url, 2) },
         { name: 'Prince API', method: () => princeSongDownload(video.url) },
+        { name: 'Hector', method: () => hectorSongDownload(video.url, 1) },
         { name: 'Prexzy', method: () => prexzySongDownload(video.url) },
         { name: 'EliteProTech', method: () => APIs.getEliteProTechDownloadByUrl(video.url) },
         { name: 'Yupra', method: () => APIs.getYupraDownloadByUrl(video.url) },
         { name: 'Okatsu', method: () => APIs.getOkatsuDownloadByUrl(video.url) },
         { name: 'Izumi', method: () => APIs.getIzumiDownloadByUrl(video.url) },
       ];
-      if (hasCookies()) apiMethods.unshift(localYtdlp);
-      else apiMethods.push(localYtdlp);
+      // With cookies configured yt-dlp is the most reliable source, so it goes first.
+      // Without cookies it still goes right after the two working APIs.
+      apiMethods.splice(hasCookies() ? 0 : 2, 0, localYtdlp);
 
       for (const apiMethod of apiMethods) {
         try {
