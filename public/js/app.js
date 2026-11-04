@@ -1374,11 +1374,13 @@ async function renderWebConsole() {
   }
   function notifyNew(d) {
     if (d.entry.fromMe || d.entry.type === 'reaction' || P.muted.includes(d.jid)) return;
+    if (window.WAP && WAP.isHidden(d.jid)) return;
+    const masked = window.WAP && WAP.maskNotif(d.jid);
     if (d.jid === S.jid && !document.hidden) return;
     beep();
     if (P.desktop && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        const n = new Notification(d.chat.name || 'New message', { body: d.entry.text || d.entry.type, icon: '/img/logo.png', tag: d.jid });
+        const n = new Notification(masked ? 'New message' : d.chat.name || 'New message', { body: masked ? 'Tap to open' : d.entry.text || d.entry.type, icon: '/img/logo.png', tag: masked ? 'wa' : d.jid });
         n.onclick = () => { window.focus(); openChat(d.jid); n.close(); };
       } catch (e) { /* not allowed here */ }
     }
@@ -1401,8 +1403,9 @@ async function renderWebConsole() {
   function paintStatus() {
     const el = $('#waStatus');
     if (!el) return;
-    const online = S.chats.filter((c) => !c.isGroup && isOnline(c)).length;
-    const unread = S.chats.reduce((n, c) => n + (c.unread ? 1 : 0), 0);
+    const vis = window.WAP ? WAP.visibleChats() : S.chats;
+    const online = vis.filter((c) => !c.isGroup && isOnline(c)).length;
+    const unread = vis.reduce((n, c) => n + (c.unread ? 1 : 0), 0);
     const on = $('#waOnlineN'), un = $('#waUnreadN');
     if (on) on.textContent = online;
     if (un) un.textContent = unread;
@@ -1434,19 +1437,21 @@ async function renderWebConsole() {
     const box = $('#waList');
     if (!box) return;
     paintStatus();
-    const archivedN = S.chats.filter((c) => P.archived.includes(c.jid)).length;
+    const allChats = window.WAP ? WAP.visibleChats() : S.chats;
+    const archivedN = allChats.filter((c) => P.archived.includes(c.jid)).length;
     const arch = $('#waArchN'); if (arch) arch.textContent = archivedN;
-    const unreadTotal = S.chats.reduce((n, c) => n + (c.unread && !P.muted.includes(c.jid) ? c.unread : 0), 0);
+    const unreadTotal = allChats.reduce((n, c) => n + (c.unread && !P.muted.includes(c.jid) ? c.unread : 0), 0);
     document.title = (unreadTotal ? `(${unreadTotal}) ` : '') + 'WhatsApp - by Ntandomods';
-    let list = S.chats;
-    if (S.tab === 'archived') list = list.filter((c) => P.archived.includes(c.jid));
+    let list = allChats;
+    if (S.tab === 'private' && window.WAP) list = WAP.privateList();
+    else if (S.tab === 'archived') list = list.filter((c) => P.archived.includes(c.jid));
     else list = list.filter((c) => !P.archived.includes(c.jid));
     if (S.tab === 'online') list = list.filter((c) => !c.isGroup && isOnline(c));
     if (S.tab === 'unread') list = list.filter((c) => c.unread);
     if (S.tab === 'online') list = [...list].sort((a, b) => (eff(b).state === 'composing') - (eff(a).state === 'composing'));
     list = [...list].sort((a, b) => (P.pinned.includes(b.jid) - P.pinned.includes(a.jid)) || (b.lastTs - a.lastTs));
     if (!list.length) {
-      box.innerHTML = `<div class="chat-empty">${S.chats.length
+      box.innerHTML = `<div class="chat-empty">${S.tab === 'private' ? 'No hidden chats. Right-click a chat and choose Hide chat.' : S.chats.length
         ? (S.tab === 'online' ? 'Nobody is online right now. People show up here the moment WhatsApp reports them online or typing.' : S.tab === 'archived' ? 'No archived chats.' : 'No unread chats.')
         : 'No chats yet. When someone messages this number it shows up here.'}</div>`;
       return;
@@ -1456,7 +1461,7 @@ async function renderWebConsole() {
       const typing = e.state === 'composing' || e.state === 'recording';
       const last = typing
         ? `<span class="wa-last wa-typing-txt">${e.state === 'composing' ? 'typing…' : 'recording audio…'}</span>`
-        : `<span class="wa-last">${c.lastFromMe ? 'You: ' : ''}${esc(c.lastText || '')}</span>`;
+        : `<span class="wa-last">${(window.WAP && WAP.preview(c)) || (c.lastFromMe ? 'You: ' : '') + esc(c.lastText || '')}</span>`;
       const pinned = P.pinned.includes(c.jid), muted = P.muted.includes(c.jid);
       return `
       <div class="wa-chat ${c.jid === S.jid ? 'active' : ''}" data-jid="${esc(c.jid)}">
@@ -1482,6 +1487,7 @@ async function renderWebConsole() {
       { label: P.archived.includes(jid) ? 'Unarchive chat' : 'Archive chat', run: () => { toggleIn(P.archived, jid); paintList(); } },
       { label: P.muted.includes(jid) ? 'Unmute notifications' : 'Mute notifications', run: () => { toggleIn(P.muted, jid); paintList(); } },
       window.WAX ? { label: 'Export chat (.txt)', run: () => WAX.exportChat(jid) } : null,
+      ...(window.WAP ? WAP.menuItems(jid) : []),
       c.unread ? { label: 'Mark as read', run: () => { c.unread = 0; api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); paintList(); } } : null,
     ]);
   }
@@ -1647,14 +1653,16 @@ async function renderWebConsole() {
       const who = !m.fromMe && S.chat && S.chat.isGroup ? `<div class="wa-who">${esc(m.senderName || '+' + m.sender)}</div>` : '';
       const star = P.starred[m.id] ? '<span class="wa-star" title="Starred">★</span>' : '';
       const edited = m.edited ? '<span class="wa-edited">edited</span>' : '';
-      const menu = m.deleted ? '' : `<button class="wa-msg-menu" data-mmenu="${esc(m.id)}" title="Options">${WAI2.chev}</button>`;
+      const gone = m.deleted && !m.recovered;
+      const menu = gone ? '' : `<button class="wa-msg-menu" data-mmenu="${esc(m.id)}" title="Options">${WAI2.chev}</button>`;
       let inner;
-      if (m.deleted) inner = '<span class="wa-deleted">This message was deleted</span>';
+      if (gone) inner = '<span class="wa-deleted">This message was deleted</span>';
       else {
         const body = m.text ? hl(m.text) : '';
         const media = KNOWN_MEDIA.includes(m.type) ? mediaHtml(m) : (icon[m.type] ? `<span class="wa-media">${icon[m.type]} ${esc(m.type)}</span>` : '');
         const showText = m.type !== 'document' && m.text;
-        inner = `${media}${media && showText ? '<br>' : ''}${showText ? body : ''}`;
+        const tag = (m.recovered ? '<div class="wap-tag del">🗑 Deleted by sender · recovered</div>' : '') + (m.viewOnce ? '<div class="wap-tag vo">👁 View once · unlocked</div>' : '');
+        inner = `${tag}${media}${media && showText ? '<br>' : ''}${showText ? body : ''}`;
         if (S.find && m.text && m.text.toLowerCase().includes(S.find.toLowerCase())) hits += 1;
       }
       return `${sep}<div class="wa-msg ${m.fromMe ? 'me' : 'them'}${m.edited || P.starred[m.id] ? ' wide' : ''}" data-id="${esc(m.id)}">${menu}${who}${inner}<div class="wa-meta">${star}${edited}${hhmm(m.ts)} ${tick(m)}</div></div>`;
@@ -1679,7 +1687,7 @@ async function renderWebConsole() {
 
   function msgMenu(id, x, y) {
     const m = S.msgs.find((k) => k.id === id);
-    if (!m || m.deleted) return;
+    if (!m || (m.deleted && !m.recovered)) return;
     const fresh = Date.now() / 1000 - m.ts < 15 * 60;
     popMenu(x, y, [
       { label: 'Reply', run: () => setReply(m) },
@@ -1758,6 +1766,7 @@ async function renderWebConsole() {
   }
 
   async function openChat(jid) {
+    if (window.WAP && !(await WAP.gate(jid))) return;
     if (window.WAX) WAX.beforeOpen(jid);
     S.jid = jid; S.replyTo = null; setReply(null);
     $('#waShell').classList.add('chat-open');
@@ -1780,7 +1789,7 @@ async function renderWebConsole() {
       $('#waForm').hidden = false;
       paintThread(true);
       const c = S.chats.find((x) => x.jid === jid);
-      if (c && c.unread) { c.unread = 0; api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); }
+      if (c && c.unread) { c.unread = 0; if (!(window.WAP && WAP.ghost.read())) api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); }
       paintList();
     } catch (e) { toast(e.message, 'err'); }
   }
@@ -1814,6 +1823,7 @@ async function renderWebConsole() {
   $('#waText').addEventListener('input', () => {
     if (!S.jid) return;
     const jid = S.jid;
+    if (window.WAP && WAP.ghost.typing()) return;
     if (!S.typingOn) { S.typingOn = true; api(base + '/typing', { method: 'POST', body: { jid, on: true } }).catch(() => {}); }
     clearTimeout(typingStop);
     typingStop = setTimeout(() => { S.typingOn = false; api(base + '/typing', { method: 'POST', body: { jid, on: false } }).catch(() => {}); }, 4000);
@@ -2056,6 +2066,10 @@ async function renderWebConsole() {
     try { WAX.init({ S, base, bot, api, toast, esc, $, waApp, P, savePrefs, MEDIA, paintThread, paintList, setReply, openChat, dialog, popMenu, fetchMedia, hhmm }); }
     catch (e) { console.error('[wa-extras]', e); }
   }
+  if (window.WAP) {
+    try { WAP.init({ S, base, bot, api, toast, esc, $, waApp, P, savePrefs, paintThread, paintList, openChat, dialog, popMenu }); }
+    catch (e) { console.error('[wa-private]', e); }
+  }
   await loadChats();
 
   // live updates
@@ -2070,7 +2084,7 @@ async function renderWebConsole() {
     if (d.jid === S.jid) {
       if (!S.msgs.some((m) => m.id === d.entry.id)) S.msgs.push(d.entry);
       paintThread(d.entry.fromMe);
-      if (!d.entry.fromMe) { chat.unread = 0; api(base + '/read', { method: 'POST', body: { jid: S.jid } }).catch(() => {}); }
+      if (!d.entry.fromMe) { chat.unread = 0; if (!(window.WAP && WAP.ghost.read())) api(base + '/read', { method: 'POST', body: { jid: S.jid } }).catch(() => {}); }
     }
     if (i >= 0) S.chats.splice(i, 1);
     if (!S.q) S.chats.unshift(chat);
@@ -2080,8 +2094,13 @@ async function renderWebConsole() {
   webES.addEventListener('deleted', (ev) => {
     const d = JSON.parse(ev.data);
     const m = S.msgs.find((x) => x.id === d.id);
-    if (m) { m.deleted = true; m.text = ''; if (d.jid === S.jid) paintThread(false); }
+    if (m) {
+      m.deleted = true;
+      if (d.recovered) m.recovered = true; else { m.text = ''; m.media = null; }
+      if (d.jid === S.jid) paintThread(false);
+    }
   });
+  webES.addEventListener('statusnew', (ev) => { if (window.WAP) { try { WAP.onStatusNew(JSON.parse(ev.data)); } catch (e) { /* ignore */ } } });
   webES.addEventListener('edited', (ev) => {
     const d = JSON.parse(ev.data);
     const m = S.msgs.find((x) => x.id === d.id);

@@ -42,6 +42,8 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 - **Referrals**: each user has a link `#/register?ref=<username>` on the dashboard (copy + WhatsApp share). The friend gets `REFERRAL_FRIEND_COINS` (20) bonus coins at signup; the referrer gets `REFERRAL_REFERRER_COINS` (40) once the friend's bot has been online `REFERRAL_MIN_UPTIME_MIN` (10) minutes. Cap `REFERRAL_MONTHLY_CAP` (10) rewards per referrer per 30 days. Blocked: self-referral, same-network signups, same WhatsApp session as the referrer, more than 3 welcome bonuses per IP. **Admin -> Referrals** lists everything.
 - **Bots survive restarts**: bots that were running are resumed on boot (after `BOOT_RESUME_DELAY_SEC`, default 20s, so an overlapping old instance can release the WhatsApp session first). A **watchdog** checks every minute and restarts any bot that should be running but is down (with back-off), even after auto-restart gave up. On Render a **keep-alive** ping (`RENDER_EXTERNAL_URL`, disable with `KEEP_ALIVE=false`) stops the free plan from sleeping and taking all bots offline. Set `MONGODB_URI` or all users and bots are lost on every restart.
 
+> **Free mode:** Custom bot settings, Crash alerts, 30-day Uptime history and the API Pass are unlocked for every user by default. Set `FREE_FEATURES=none` (or a subset such as `FREE_FEATURES=envvars,uptime`) to make them paid again.
+
 ## 🆕 New: Settings, Custom bot settings & Crash alerts
 
 | Feature | Plan | What it does |
@@ -86,6 +88,22 @@ Open any running bot and press **Web** to get a full browser client for the bot'
 | **Drafts** | Unsent text is kept per chat, even after a reload. |
 | **Export** | Right-click a chat, then **Export chat (.txt)**. |
 | **Shortcuts** | Press `?` for the list (Alt+Up/Down switches chats, Ctrl+, opens appearance). |
+
+### 🕶️ Privacy pack (GB WhatsApp style)
+
+| Feature | What it does |
+| --- | --- |
+| **Status viewer** | Rail button **Status**: see every contact's status for 24 h (text, photo, video) with story-style progress, keyboard arrows, **download**, and a badge for unseen ones. Viewing is anonymous: no "viewed" receipt is sent unless you press the eye button or turn on *Let people know I viewed their status*. |
+| **Post a status** | `＋` in the Status panel: text with 8 colours, or a photo/video (max 9 MB) with caption. Goes to everyone the number has chatted with. Max 10 posts per hour. |
+| **Anti-delete** | A message deleted *for everyone* by the other side stays in the chat, tagged *Deleted by sender · recovered* (text and, within memory limits, its media). |
+| **View once unlocker** | View-once photos / videos / voice notes are tagged *View once · unlocked*, saved to memory the moment they arrive (small capped ring, so they survive expiry) and can be opened and saved repeatedly. |
+| **Hide chats** | Right-click a chat -> *Hide chat*. It disappears from the list, search, counters and notifications. Open the lock icon above the chat list and enter your PIN to see hidden chats. |
+| **Chat lock** | Right-click a chat -> *Lock chat with PIN*. The preview is masked and opening it asks for the PIN. |
+| **Console lock** | Lock button on the rail or `Ctrl+L`; optional auto-lock after 1 / 5 / 15 / 30 min idle. |
+| **Ghost mode** | Shield button: don't send read receipts when you open chats, don't show *typing...* / *recording...*. |
+| **Masked notifications** | Notifications say *New message* only. |
+
+Hide / lock / PIN are stored in the browser (`localStorage`, per bot) and use a salted PBKDF2 hash. They keep casual snoopers out; they are not server-side encryption. New endpoints: `GET /api/bots/:id/web/statuses`, `GET .../status-media`, `POST .../status-seen`, `POST .../status-post`. Bot bridge changes live in `lib/bot-shims/webBridge.js`; the platform copies the new bridge into the bot on every boot, so just redeploy and restart the bot.
 
 The logo lives in `public/img/wa-logo.svg` (PNG sizes next to it). Messages are still held in memory only and never written to disk.
 New endpoints: `POST /api/bots/:id/web/sendvoice`, `GET /api/bots/:id/web/search`, and `mentions` on `POST /web/send`.

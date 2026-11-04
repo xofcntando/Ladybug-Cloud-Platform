@@ -588,6 +588,7 @@
         try {
           const r = await CTX.api(`${CTX.base}/search?q=${encodeURIComponent(q)}`);
           if (my !== seq) return;
+          if (window.WAP) r.results = r.results.filter((x) => !WAP.isPrivate(x.jid));
           out.innerHTML = r.results.length ? r.results.map((x, i) => `<div class="wa-starred" data-i="${i}"><small>${escH(x.chat)}${x.isGroup && x.sender ? ' · ' + escH(x.sender) : ''} · ${escH(new Date(x.ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}${x.fromMe ? ' · You' : ''}</small><div>${mark(x.text, q)}</div></div>`).join('') + (r.total > r.results.length ? `<div class="wa-hint">Showing ${r.results.length} of ${r.total}. Narrow the search to see more.</div>` : '') : '<div class="chat-empty">No messages found.</div>';
           out.querySelectorAll('[data-i]').forEach((el) => { el.onclick = async () => { const x = r.results[+el.dataset.i]; d.remove(); await jumpTo(x, q); }; });
         } catch (e) { out.innerHTML = `<div class="chat-empty">${escH(e.message || 'Search failed')}</div>`; }

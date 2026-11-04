@@ -21,6 +21,16 @@ const contacts = new Map(); // jid -> name
 let sock = null;
 let wired = false;
 const raw = new Map(); // message id -> raw WhatsApp message, only for media we may be asked to download
+// ---- GB-style extras: Status viewer, anti-delete, anti view-once
+const statuses = new Map(); // poster jid -> [status entry]
+const STATUS_TTL = 24 * 3600; // seconds, WhatsApp statuses vanish after a day
+const STATUS_MAX_POSTERS = 120;
+const STATUS_MAX_PER_POSTER = 30;
+const statusRaw = new Map(); // status id -> raw message
+const STATUS_RAW_MAX = 150;
+const vault = new Map(); // message id -> { buf, mime } : view-once media saved the moment it arrives, so it survives expiry
+const VAULT_MAX_ITEMS = 16, VAULT_MAX_ITEM_BYTES = 3 * 1024 * 1024, VAULT_MAX_BYTES = 24 * 1024 * 1024;
+let vaultBytes = 0;
 const RAW_MAX = 250;
 const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
 const quietLog = { level: 'silent', info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child() { return quietLog; } };
@@ -76,10 +86,17 @@ const tsOf = (t) => (t && typeof t === 'object' && typeof t.toNumber === 'functi
 function unwrap(m) {
   let x = m || {};
   for (let i = 0; i < 4; i++) {
-    x = x.ephemeralMessage?.message || x.viewOnceMessage?.message || x.viewOnceMessageV2?.message ||
+    x = x.ephemeralMessage?.message || x.viewOnceMessage?.message || x.viewOnceMessageV2?.message || x.viewOnceMessageV2Extension?.message ||
       x.documentWithCaptionMessage?.message || x.editedMessage?.message?.protocolMessage?.editedMessage || x;
   }
   return x;
+}
+
+/** True when the sender marked the photo / video / voice note as "view once". */
+function isViewOnce(message, node) {
+  const x = message || {};
+  const w = x.ephemeralMessage?.message || x;
+  return !!(w.viewOnceMessage || w.viewOnceMessageV2 || w.viewOnceMessageV2Extension || (node && node.viewOnce));
 }
 
 function describe(message) {
@@ -150,6 +167,7 @@ function ingest(m, live) {
     };
     const mm = unwrap(m.message);
     const mediaNode = mm.imageMessage || mm.videoMessage || mm.audioMessage || mm.documentMessage || mm.stickerMessage;
+    if (isViewOnce(m.message, mediaNode)) entry.viewOnce = true;
     if (mediaNode) {
       entry.media = { mime: mediaNode.mimetype || null, size: Number(mediaNode.fileLength && mediaNode.fileLength.toNumber ? mediaNode.fileLength.toNumber() : mediaNode.fileLength) || null, seconds: mediaNode.seconds || null, name: mediaNode.fileName || null };
       const th = mediaNode.jpegThumbnail || mediaNode.pngThumbnail;
@@ -167,6 +185,7 @@ function ingest(m, live) {
     if (!fromMe && m.pushName && !isGroup(jid)) { contacts.set(jid, m.pushName); if (!c.name) c.name = m.pushName; }
     if (entry.ts >= c.lastTs) { c.lastTs = entry.ts; c.lastText = label(d).slice(0, 120); c.lastFromMe = fromMe; }
     if (live && !fromMe && d.type !== 'reaction') c.unread = (c.unread || 0) + 1;
+    if (entry.viewOnce && !fromMe) saveToVault(m, entry);
     return { jid, entry, chat: chatView(c) };
   } catch (e) { return null; }
 }
@@ -180,7 +199,12 @@ function applyProtocol(m) {
     const jid = m.key.remoteJid;
     const e = (msgs.get(jid) || []).find((x) => x.id === pm.key.id);
     if (!e) return true;
-    if (pm.type === 0) { e.deleted = true; e.text = ''; e.media = null; raw.delete(e.id); emit('deleted', { jid, id: e.id }); }
+    if (pm.type === 0) {
+      // Anti-delete: the sender removed it for everyone, but we keep our copy and flag it, like GB WhatsApp.
+      if (!e.fromMe && (e.text || e.media)) { e.deleted = true; e.recovered = true; if (e.media && !vault.has(e.id) && raw.has(e.id)) saveToVault(raw.get(e.id), e, true); }
+      else { e.deleted = true; e.text = ''; e.media = null; raw.delete(e.id); }
+      emit('deleted', { jid, id: e.id, recovered: !!e.recovered });
+    }
     else if (pm.type === 14 && pm.editedMessage) {
       const d = describe(pm.editedMessage);
       if (d) { e.text = String(d.text || '').slice(0, MAX_TEXT); e.edited = true; emit('edited', { jid, id: e.id, text: e.text }); }
@@ -188,6 +212,71 @@ function applyProtocol(m) {
     return true;
   } catch (err) { return false; }
 }
+
+/** Download media right away and keep it in memory (small ring, hard byte cap) so it can still be opened after it expired or was deleted. */
+async function saveToVault(m, entry, force) {
+  try {
+    if (!sock || !entry || !entry.media || vault.has(entry.id)) return;
+    const size = entry.media.size || 0;
+    if (size > VAULT_MAX_ITEM_BYTES) return;
+    const { downloadMediaMessage } = baileys();
+    const buf = await downloadMediaMessage(m, 'buffer', {}, { logger: quietLog, reuploadRequest: sock.updateMediaMessage });
+    if (!buf || !buf.length || buf.length > VAULT_MAX_ITEM_BYTES) return;
+    while ((vault.size >= VAULT_MAX_ITEMS || vaultBytes + buf.length > VAULT_MAX_BYTES) && vault.size) {
+      const [k, v] = vault.entries().next().value;
+      vault.delete(k); vaultBytes -= v.buf.length;
+    }
+    vault.set(entry.id, { buf, mime: entry.media.mime || null });
+    vaultBytes += buf.length;
+    entry.kept = true;
+    emit('kept', { jid: m.key && m.key.remoteJid, id: entry.id });
+  } catch (e) { /* the lazy download path still works while WhatsApp has the file */ }
+}
+
+/** Statuses (stories) arrive as messages from status@broadcast. We keep them for 24 h, in memory only. */
+function ingestStatus(m) {
+  try {
+    const d = describe(m.message);
+    if (!d || d.type === 'reaction') return null;
+    const fromMe = !!m.key.fromMe;
+    const poster = fromMe ? selfJid() : String(m.key.participant || m.participant || '');
+    if (!poster || !/@(s\.whatsapp\.net|lid)$/.test(poster)) return null;
+    const ts = tsOf(m.messageTimestamp) || Math.floor(Date.now() / 1000);
+    if (Date.now() / 1000 - ts > STATUS_TTL) return null;
+    const list = statuses.get(poster) || [];
+    if (list.some((x) => x.id === m.key.id)) return null;
+    const mm = unwrap(m.message);
+    const node = mm.imageMessage || mm.videoMessage || mm.audioMessage;
+    const st = { id: m.key.id, poster, ts, type: d.type, text: String(d.text || '').slice(0, 1000), fromMe, name: fromMe ? 'My status' : m.pushName || null };
+    if (mm.extendedTextMessage) { st.bg = mm.extendedTextMessage.backgroundArgb ? '#' + (mm.extendedTextMessage.backgroundArgb >>> 0).toString(16).padStart(8, '0').slice(2) : null; }
+    if (node) {
+      st.media = { mime: node.mimetype || null, size: Number(node.fileLength && node.fileLength.toNumber ? node.fileLength.toNumber() : node.fileLength) || null, seconds: node.seconds || null };
+      const th = node.jpegThumbnail;
+      if (th) { try { const b64 = typeof th === 'string' ? th : Buffer.from(th).toString('base64'); if (b64.length > 20 && b64.length < 40000) st.thumb = 'data:image/jpeg;base64,' + b64; } catch (e) { /* no thumbnail */ } }
+      statusRaw.set(st.id, m);
+      if (statusRaw.size > STATUS_RAW_MAX) statusRaw.delete(statusRaw.keys().next().value);
+    }
+    list.push(st);
+    list.sort((a, b) => a.ts - b.ts);
+    if (list.length > STATUS_MAX_PER_POSTER) list.splice(0, list.length - STATUS_MAX_PER_POSTER);
+    statuses.set(poster, list);
+    if (!fromMe && m.pushName && !contacts.has(poster)) contacts.set(poster, m.pushName);
+    if (statuses.size > STATUS_MAX_POSTERS) {
+      const oldest = [...statuses.entries()].sort((a, b) => (a[1][a[1].length - 1].ts) - (b[1][b[1].length - 1].ts))[0];
+      if (oldest) statuses.delete(oldest[0]);
+    }
+    return st;
+  } catch (e) { return null; }
+}
+function pruneStatuses() {
+  const cut = Date.now() / 1000 - STATUS_TTL;
+  for (const [k, list] of statuses) {
+    const keep = list.filter((x) => x.ts >= cut);
+    for (const x of list) if (x.ts < cut) statusRaw.delete(x.id);
+    if (keep.length) statuses.set(k, keep); else statuses.delete(k);
+  }
+}
+if (enabled) setInterval(pruneStatuses, 10 * 60 * 1000).unref();
 
 function emit(event, data) { try { process.send({ type: 'wa', event, ...data }); } catch (e) { /* parent gone */ } }
 
@@ -241,6 +330,13 @@ function wire(s) {
   });
   s.ev.on('messages.upsert', ({ messages, type }) => {
     for (const m of messages || []) {
+      if (m.key && m.key.remoteJid === 'status@broadcast') {
+        const pm = m.message && m.message.protocolMessage;
+        if (pm && pm.key && pm.type === 0) { for (const [, list] of statuses) { const x = list.find((y) => y.id === pm.key.id); if (x) x.removed = true; } continue; }
+        const st = ingestStatus(m);
+        if (st) emit('statusnew', { poster: st.poster, name: st.name, fromMe: st.fromMe, ts: st.ts });
+        continue;
+      }
       if (applyProtocol(m)) continue;
       const r = ingest(m, type === 'notify');
       if (r) {
@@ -258,7 +354,7 @@ function wire(s) {
   s.ev.on('messaging-history.set', ({ chats: cs, contacts: ct, messages: ms }) => {
     for (const c of ct || []) if (c.id && (c.name || c.notify)) contacts.set(c.id, c.name || c.notify);
     for (const c of cs || []) if (c.id && !c.id.endsWith('@broadcast')) { const x = ensureChat(c.id); if (c.name) x.name = c.name; x.unread = c.unreadCount || 0; }
-    for (const m of ms || []) ingest(m, false);
+    for (const m of ms || []) { if (m.key && m.key.remoteJid === 'status@broadcast') ingestStatus(m); else ingest(m, false); }
   });
   s.ev.on('chats.upsert', (cs) => { for (const c of cs || []) if (c.id && !c.id.endsWith('@broadcast')) { const x = ensureChat(c.id); if (c.name) x.name = c.name; } });
   s.ev.on('chats.update', (cs) => { for (const c of cs || []) { const x = chats.get(c.id); if (x && typeof c.unreadCount === 'number') x.unread = Math.max(0, c.unreadCount); } });
@@ -284,7 +380,7 @@ function attach(newSock, store) {
   sock = newSock;
   try {
     // seed from the bot's own in-memory store so history from before the dashboard opened shows up
-    if (store && store.messages && !wired) for (const [, byId] of store.messages) for (const m of byId.values()) ingest(m, false);
+    if (store && store.messages && !wired) for (const [, byId] of store.messages) for (const m of byId.values()) { if (m.key && m.key.remoteJid === 'status@broadcast') ingestStatus(m); else ingest(m, false); }
   } catch (e) { /* optional */ }
   wired = true;
   wire(newSock);
@@ -394,6 +490,12 @@ const handlers = {
     if (!okJid(jid)) throw new Error('Invalid chat id');
     const m = raw.get(String(id));
     const e = (msgs.get(jid) || []).find((x) => x.id === String(id));
+    const kept = vault.get(String(id));
+    if (kept && e && e.media) {
+      const fb = { image: 'image/jpeg', sticker: 'image/webp', video: 'video/mp4', voice: 'audio/ogg', audio: 'audio/mpeg' }[e.type] || 'application/octet-stream';
+      const mime = kept.mime || fb;
+      return { mime, name: e.media.name || null, data: `data:${mime};base64,${kept.buf.toString('base64')}`, kept: true };
+    }
     if (!m || !e || !e.media) throw new Error('This file is no longer available. Only recent media can be opened.');
     if (e.media.size && e.media.size > MEDIA_MAX_BYTES) throw new Error(`File is too large to preview here (${Math.round(e.media.size / 1048576)} MB, limit 8 MB)`);
     const { downloadMediaMessage } = baileys();
@@ -412,6 +514,81 @@ const handlers = {
     let mime = e.media.mime || fallback;
     if (/^image\//.test(fallback) && !/^image\//.test(mime)) mime = fallback;
     return { mime, name: e.media.name || null, data: `data:${mime};base64,${buf.toString('base64')}` };
+  },
+  /* ------------------------------------------------------------------ Status (stories) viewer */
+  /** Everyone's active statuses, newest poster first. Viewing is anonymous: we never send a read receipt unless asked. */
+  statuses() {
+    pruneStatuses();
+    const out = [];
+    for (const [poster, list] of statuses) {
+      const items = list.filter((x) => !x.removed).map((x) => ({ id: x.id, ts: x.ts, type: x.type, text: x.text, bg: x.bg || null, media: x.media || null, thumb: x.thumb || null }));
+      if (!items.length) continue;
+      const fromMe = list[0].fromMe;
+      out.push({
+        jid: poster, fromMe,
+        name: fromMe ? 'My status' : contacts.get(poster) || list.map((x) => x.name).filter(Boolean).pop() || '+' + num(poster),
+        avatar: (avatars.get(poster) || {}).url || null,
+        latest: items[items.length - 1].ts, items,
+      });
+    }
+    out.sort((a, b) => (b.fromMe - a.fromMe) || b.latest - a.latest);
+    return { statuses: out };
+  },
+  async statusMedia({ poster, id } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const list = statuses.get(String(poster)) || [];
+    const st = list.find((x) => x.id === String(id));
+    const m = statusRaw.get(String(id));
+    if (!st || !st.media || !m) throw new Error('This status is no longer available.');
+    if (st.media.size && st.media.size > 16 * 1048576) throw new Error('Status is too large to open here (limit 16 MB)');
+    const { downloadMediaMessage } = baileys();
+    let buf;
+    try { buf = await downloadMediaMessage(m, 'buffer', {}, { logger: quietLog, reuploadRequest: sock.updateMediaMessage }); }
+    catch (err) {
+      const why = err && err.message ? err.message : String(err);
+      throw new Error(/404|410|gone|not found|expired/i.test(why) ? 'WhatsApp no longer has this status (it expired).' : 'Could not download this status: ' + why);
+    }
+    if (!buf || !buf.length) throw new Error('Could not download this status');
+    const mime = st.media.mime || (st.type === 'video' ? 'video/mp4' : st.type === 'image' ? 'image/jpeg' : 'audio/ogg');
+    return { mime, data: `data:${mime};base64,${buf.toString('base64')}` };
+  },
+  /** Optional: tell the poster "viewed" (the blue-eye receipt). Off by default. */
+  async statusSeen({ poster, id } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const m = statusRaw.get(String(id)) || null;
+    const st = (statuses.get(String(poster)) || []).find((x) => x.id === String(id));
+    if (!st || st.fromMe) return { ok: true };
+    await sock.readMessages([{ remoteJid: 'status@broadcast', id: st.id, fromMe: false, participant: st.poster }]);
+    return { ok: true, raw: !!m };
+  },
+  /** Post a text, photo or video status to everyone this number has talked to. */
+  async statusPost({ text, data, caption, bg, font } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const list = new Set([selfJid()]);
+    for (const jid of chats.keys()) if (/@s\.whatsapp\.net$/.test(jid)) list.add(jid);
+    for (const jid of contacts.keys()) if (/@s\.whatsapp\.net$/.test(jid)) list.add(jid);
+    const statusJidList = [...list].slice(0, 500);
+    let content;
+    let opts = { statusJidList };
+    if (data) {
+      const mt = /^data:([a-zA-Z0-9.+/-]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(data));
+      if (!mt) throw new Error('Invalid file');
+      const buf = Buffer.from(mt[2], 'base64');
+      if (!buf.length) throw new Error('File is empty');
+      if (buf.length > 9 * 1048576) throw new Error("File is too large (limit 9 MB)");
+      const cap = caption ? String(caption).slice(0, 700) : undefined;
+      if (/^image\/(jpeg|png|webp)$/.test(mt[1])) content = { image: buf, caption: cap };
+      else if (/^video\/(mp4|3gpp|quicktime)$/.test(mt[1])) content = { video: buf, caption: cap };
+      else throw new Error('Statuses can only be photos or videos');
+    } else {
+      const t = String(text || '').trim().slice(0, 700);
+      if (!t) throw new Error('Write something first');
+      content = { text: t };
+      opts = { statusJidList, backgroundColor: /^#[0-9a-f]{6}$/i.test(bg || '') ? bg : '#128c7e', font: Math.min(5, Math.max(0, parseInt(font, 10) || 0)) };
+    }
+    const sent = await sock.sendMessage('status@broadcast', content, opts);
+    if (sent) { const st = ingestStatus(sent); if (st) emit('statusnew', { poster: st.poster, name: st.name, fromMe: true, ts: st.ts }); }
+    return { ok: true, id: sent && sent.key && sent.key.id, recipients: statusJidList.length };
   },
   /** Send a photo, video, audio file or document picked in the browser. */
   async sendMedia({ jid, data, name, caption } = {}) {
@@ -468,7 +645,7 @@ const handlers = {
       const c = chats.get(jid);
       for (let i = list.length - 1; i >= 0 && out.length < 400; i--) {
         const m = list[i];
-        if (m.deleted || !m.text || !m.text.toLowerCase().includes(needle)) continue;
+        if ((m.deleted && !m.recovered) || !m.text || !m.text.toLowerCase().includes(needle)) continue;
         out.push({ jid, chat: c ? c.name : contacts.get(jid) || '+' + num(jid), isGroup: isGroup(jid), id: m.id, ts: m.ts, fromMe: m.fromMe, sender: m.senderName || null, text: m.text.slice(0, 220) });
       }
     }

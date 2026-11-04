@@ -50,7 +50,7 @@ app.use(securityHeaders);
 app.use(compression());
 const jsonSmall = express.json({ limit: '2mb' });
 const jsonBig = express.json({ limit: '13mb' }); // photos / files sent from the WhatsApp client (8 MB file = ~11 MB as base64)
-app.use((req, res, next) => (/\/web\/(sendmedia|sendvoice)$/.test(req.path) ? jsonBig : jsonSmall)(req, res, next));
+app.use((req, res, next) => (/\/web\/(sendmedia|sendvoice|status-post)$/.test(req.path) ? jsonBig : jsonSmall)(req, res, next));
 app.use(express.urlencoded({ extended: true }));
 // Login sessions never expire: they are stored on disk (survive restarts and
 // redeploys), the signing secret is stable, and the cookie lasts ~10 years and
@@ -1152,6 +1152,10 @@ app.post('/api/bots/:id/web/disappearing', requireAuth, (req, res) => { const b 
 app.post('/api/bots/:id/web/sendvoice', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendVoice(b, req, res); });
 app.get('/api/bots/:id/web/search', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.search(b, req, res); });
 app.get('/api/bots/:id/web/media', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.media(b, req, res); });
+app.get('/api/bots/:id/web/statuses', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.statuses(b, req, res); });
+app.get('/api/bots/:id/web/status-media', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.statusMedia(b, req, res); });
+app.post('/api/bots/:id/web/status-seen', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.statusSeen(b, req, res); });
+app.post('/api/bots/:id/web/status-post', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.statusPost(b, req, res); });
 app.post('/api/bots/:id/web/sendmedia', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendMedia(b, req, res); });
 const scheduled = require('./lib/scheduled');
 scheduled.start();
