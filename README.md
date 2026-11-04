@@ -280,3 +280,14 @@ The Developers page (`#/developers`) has the full guide, including a "Avoid What
 The old "WhatsApp Web" console is now a full-screen WhatsApp Web look-alike called **WhatsApp - by Ntandomods**: icon rail, chat list with Online / Unread filters, doodle chat background, bubbles with tails, double ticks, emoji picker, light and dark theme (saved per browser) and a mobile layout. Open it from the **WhatsApp** button on a bot card.
 
 **Chatting with your own number ("Message yourself")**: WhatsApp delivers messages you type on your phone to a linked device as `append`, which the bot used to skip. Fresh messages from the linked account are now processed, the linked account is always treated as the owner (no `OWNER_NUMBER` needed), and every incoming message prints one `[msg] type=… fromMe=… chat=… text="…"` line in the bot log. The installer re-applies this patch after every upstream install/update.
+
+### Profile & settings (inside WhatsApp - by Ntandomods)
+
+Click your avatar in the left rail (or the person icon at the top of the chat list) to open **Profile**:
+
+- change your **name**, **About** text and **profile photo** (photos are centre-cropped and shrunk in the browser) or remove the photo
+- **Privacy**: last seen, online, profile photo, About, read receipts, who can add you to groups, who can call you
+- **Default disappearing messages** for new chats (off / 24 h / 7 d / 90 d)
+- **Blocked contacts** list with one-click Unblock; the 🚫 button in a chat header blocks that contact
+
+Changes are limited to 8 a minute per bot. The same actions exist in the API under `/bots/{id}/web/profile | privacy | blocklist | block | disappearing`.

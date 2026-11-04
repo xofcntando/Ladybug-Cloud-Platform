@@ -221,6 +221,8 @@ function attach(newSock, store) {
   wire(newSock);
 }
 
+const selfJid = () => String((sock && sock.user && sock.user.id) || '').split(':')[0].split('@')[0] + '@s.whatsapp.net';
+
 const handlers = {
   chats({ limit = 100, q = '' } = {}) {
     const needle = String(q || '').toLowerCase();
@@ -313,6 +315,97 @@ const handlers = {
     return { exists: true, jid: hit.jid };
   },
   me() { return { me: sock && sock.user ? sock.user : null }; },
+
+  /* ------------------------------------------------------------------ profile + privacy */
+  /** Current name, About text, photo and phone number of the linked account. */
+  async profileGet() {
+    if (!sock || !sock.user) throw new Error('Bot is not connected');
+    const jid = selfJid();
+    let about = null, aboutAt = null, picture = null;
+    try { const st = await sock.fetchStatus(jid); const r = Array.isArray(st) ? st[0] : st; about = (r && (r.status && r.status.status !== undefined ? r.status.status : r.status)) || null; aboutAt = r && r.status && r.status.setAt ? r.status.setAt : null; } catch (e) { /* hidden or unavailable */ }
+    try { picture = (await sock.profilePictureUrl(jid, 'image')) || null; } catch (e) { picture = null; }
+    return { jid, phone: num(jid), name: sock.user.name || null, about: typeof about === 'string' ? about : null, aboutAt, picture };
+  },
+  async profileSet({ name, about, picture, removePicture } = {}) {
+    if (!sock || !sock.user) throw new Error('Bot is not connected');
+    const jid = selfJid();
+    const done = [];
+    if (name !== undefined) {
+      const n = String(name).trim();
+      if (!n) throw new Error('Name cannot be empty');
+      if (n.length > 25) throw new Error('Name can be at most 25 characters');
+      await sock.updateProfileName(n);
+      sock.user.name = n;
+      done.push('name');
+    }
+    if (about !== undefined) {
+      const a = String(about).trim();
+      if (a.length > 139) throw new Error('About can be at most 139 characters');
+      await sock.updateProfileStatus(a);
+      done.push('about');
+    }
+    if (removePicture) {
+      await sock.removeProfilePicture(jid);
+      avatars.delete(jid);
+      done.push('picture-removed');
+    } else if (picture) {
+      const m = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(picture));
+      if (!m) throw new Error('Photo must be a JPEG, PNG or WebP image');
+      const buf = Buffer.from(m[2], 'base64');
+      if (buf.length < 500 || buf.length > 1.5 * 1024 * 1024) throw new Error('Photo is too small or too large (max 1.5 MB)');
+      await sock.updateProfilePicture(jid, buf);
+      avatars.delete(jid);
+      done.push('picture');
+    }
+    if (!done.length) throw new Error('Nothing to change');
+    return { ok: true, done };
+  },
+  /** Who can see your last seen / photo / about / online, read receipts, group adds, calls. */
+  async privacyGet() {
+    if (!sock) throw new Error('Bot is not connected');
+    let p = {};
+    try { p = (await sock.fetchPrivacySettings(true)) || {}; } catch (e) { throw new Error('Could not load privacy settings: ' + (e && e.message ? e.message : e)); }
+    return { settings: p };
+  },
+  async privacySet({ key, value } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const map = {
+      last: ['updateLastSeenPrivacy', ['all', 'contacts', 'contact_blacklist', 'none']],
+      online: ['updateOnlinePrivacy', ['all', 'match_last_seen']],
+      profile: ['updateProfilePicturePrivacy', ['all', 'contacts', 'contact_blacklist', 'none']],
+      status: ['updateStatusPrivacy', ['all', 'contacts', 'contact_blacklist', 'none']],
+      readreceipts: ['updateReadReceiptsPrivacy', ['all', 'none']],
+      groupadd: ['updateGroupsAddPrivacy', ['all', 'contacts', 'contact_blacklist']],
+      calladd: ['updateCallPrivacy', ['all', 'known']],
+    };
+    const def = map[key];
+    if (!def) throw new Error('Unknown privacy setting');
+    if (!def[1].includes(value)) throw new Error('Invalid value for this setting');
+    if (typeof sock[def[0]] !== 'function') throw new Error('This setting is not supported by the installed WhatsApp library');
+    await sock[def[0]](value);
+    return { ok: true };
+  },
+  async blocklist() {
+    if (!sock) throw new Error('Bot is not connected');
+    let list = [];
+    try { list = (await sock.fetchBlocklist()) || []; } catch (e) { throw new Error('Could not load blocked contacts'); }
+    return { blocked: list.filter(Boolean).map((jid) => ({ jid, name: contacts.get(jid) || '+' + num(jid) })) };
+  },
+  async block({ jid, block } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid) || isGroup(jid)) throw new Error('Only people can be blocked');
+    if (jid === selfJid()) throw new Error('You cannot block yourself');
+    await sock.updateBlockStatus(jid, block ? 'block' : 'unblock');
+    return { ok: true, blocked: !!block };
+  },
+  /** Default disappearing-messages timer for new chats: 0 (off), 86400, 604800, 7776000 seconds. */
+  async disappearing({ seconds } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const v = Number(seconds);
+    if (![0, 86400, 604800, 7776000].includes(v)) throw new Error('Choose off, 24 hours, 7 days or 90 days');
+    await sock.updateDefaultDisappearingMode(v);
+    return { ok: true };
+  },
 };
 
 if (enabled) {

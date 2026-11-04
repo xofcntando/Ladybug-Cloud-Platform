@@ -1220,7 +1220,7 @@ async function renderWebConsole() {
   if (!bot) return (location.hash = '#/dashboard');
 
   document.title = 'WhatsApp - by Ntandomods';
-  const WAI = {"chat": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M19.8 4H4.2C3 4 2 5 2 6.2v15.4l4-4h13.8c1.2 0 2.2-1 2.2-2.2V6.2C22 5 21 4 19.8 4zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z\"/></svg>", "bots": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M12 2a2 2 0 0 1 1 3.7V7h4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h4V5.7A2 2 0 0 1 12 2zM8.5 12a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z\"/></svg>", "moon": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.4A5.5 5.5 0 0 1 13.4 3.1C13 3 12.5 3 12 3z\"/></svg>", "new": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M19.2 3H4.8C3.8 3 3 3.8 3 4.8v14.4L7 15h12.2c1 0 1.8-.8 1.8-1.8V4.8c0-1-.8-1.8-1.8-1.8zM16 10h-3v3h-2v-3H8V8h3V5h2v3h3v2z\" transform=\"translate(0 1.5)\"/></svg>", "search": "<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M15.9 14.3H15l-.3-.3c1-1.1 1.6-2.7 1.6-4.3 0-3.7-3-6.7-6.7-6.7S3 6 3 9.7s3 6.7 6.7 6.7c1.6 0 3.2-.6 4.3-1.6l.3.3v.8l5.1 5.1 1.5-1.5-5-5.2zm-6.2 0a4.6 4.6 0 1 1 0-9.200 4.600 4.600 0 0 1 0 9.200z\"/></svg>", "send": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M1.1 21.8 23 12.4 1.1 3l-.1 7.300 15.600 2.100L1 14.500z\"/></svg>", "emoji": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\"><path fill=\"currentColor\" d=\"M9.15 11.4a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zm5.7 0a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM12 17.5c2 0 3.700-1.100 4.500-2.700H7.500c.8 1.600 2.500 2.700 4.500 2.700zM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z\"/></svg>", "lock": "<svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\"><path fill=\"currentColor\" d=\"M12 1a5 5 0 0 0-5 5v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v2H9V6z\"/></svg>"};
+  const WAI = {"user": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-3.300 0-10 1.700-10 5v3h20v-3c0-3.300-6.700-5-10-5z\"/></svg>", "chat": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M19.8 4H4.2C3 4 2 5 2 6.2v15.4l4-4h13.8c1.2 0 2.2-1 2.2-2.2V6.2C22 5 21 4 19.8 4zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z\"/></svg>", "bots": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M12 2a2 2 0 0 1 1 3.7V7h4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h4V5.7A2 2 0 0 1 12 2zM8.5 12a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z\"/></svg>", "moon": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.4A5.5 5.5 0 0 1 13.4 3.1C13 3 12.5 3 12 3z\"/></svg>", "new": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M19.2 3H4.8C3.8 3 3 3.8 3 4.8v14.4L7 15h12.2c1 0 1.8-.8 1.8-1.8V4.8c0-1-.8-1.8-1.8-1.8zM16 10h-3v3h-2v-3H8V8h3V5h2v3h3v2z\" transform=\"translate(0 1.5)\"/></svg>", "search": "<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M15.9 14.3H15l-.3-.3c1-1.1 1.6-2.7 1.6-4.3 0-3.7-3-6.7-6.7-6.7S3 6 3 9.7s3 6.7 6.7 6.7c1.6 0 3.2-.6 4.3-1.6l.3.3v.8l5.1 5.1 1.5-1.5-5-5.2zm-6.2 0a4.6 4.6 0 1 1 0-9.200 4.600 4.600 0 0 1 0 9.200z\"/></svg>", "send": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M1.1 21.8 23 12.4 1.1 3l-.1 7.300 15.600 2.100L1 14.500z\"/></svg>", "emoji": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\"><path fill=\"currentColor\" d=\"M9.15 11.4a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zm5.7 0a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM12 17.5c2 0 3.700-1.100 4.500-2.700H7.500c.8 1.600 2.500 2.700 4.500 2.700zM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z\"/></svg>", "lock": "<svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\"><path fill=\"currentColor\" d=\"M12 1a5 5 0 0 0-5 5v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v2H9V6z\"/></svg>"};
   let waTheme = 'dark';
   try { waTheme = localStorage.getItem('wa_theme') || 'dark'; } catch (e) { /* ignore */ }
   const myInitial = esc((bot.name || 'W').charAt(0).toUpperCase());
@@ -1231,7 +1231,7 @@ async function renderWebConsole() {
       <a class="wa-rail-btn" href="#/dashboard" title="Back to my bots">${WAI.bots}</a>
       <span class="wa-rail-grow"></span>
       <button class="wa-rail-btn" id="waTheme" title="Switch light / dark theme">${WAI.moon}</button>
-      <div class="wa-rail-me" title="${esc(bot.name)}">${myInitial}</div>
+      <button class="wa-rail-me" id="waMe" title="Profile">${myInitial}</button>
     </nav>
     <div class="wa-shell" id="waShell">
       <aside class="wa-side">
@@ -1239,6 +1239,7 @@ async function renderWebConsole() {
           <div class="wa-brand"><b>WhatsApp</b><small>by Ntandomods</small></div>
           <div class="wa-side-icons">
             <button class="wa-icon-btn" id="waNew" title="New chat">${WAI.new}</button>
+            <button class="wa-icon-btn" id="waProfBtn" title="Profile and settings">${WAI.user}</button>
           </div>
         </header>
         <div class="wa-status" id="waStatus"><span class="wa-dot"></span><span>Checking connection…</span></div>
@@ -1249,6 +1250,7 @@ async function renderWebConsole() {
           <button data-tab="unread">Unread <i id="waUnreadN">0</i></button>
         </div>
         <div class="wa-list" id="waList"><div class="chat-empty">Loading…</div></div>
+        <div class="wa-profile" id="waProfile" hidden></div>
       </aside>
       <section class="wa-main" id="waMain">
         <div class="wa-empty" id="waEmpty">
@@ -1434,8 +1436,9 @@ async function renderWebConsole() {
     if (!top || !c || !S.jid) return;
     const line = presenceLine(c);
     const live = !c.isGroup && isOnline(c);
-    top.innerHTML = `<button class="wa-icon-btn wa-back" id="waBack" title="Back">←</button>${avatarHtml(c)}<div class="wa-who-top"><b>${esc(c.name)}</b><span class="wa-presence ${live ? 'live' : ''} ${eff(c).state === 'composing' ? 'typing' : ''}">${esc(line || S.jid.split('@')[0])}</span></div>`;
+    top.innerHTML = `<button class="wa-icon-btn wa-back" id="waBack" title="Back">←</button>${avatarHtml(c)}<div class="wa-who-top"><b>${esc(c.name)}</b><span class="wa-presence ${live ? 'live' : ''} ${eff(c).state === 'composing' ? 'typing' : ''}">${esc(line || S.jid.split('@')[0])}</span></div>${c.isGroup ? '' : '<button class="wa-icon-btn wa-block-btn" id="waBlockBtn" title="Block contact"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM4 12a8 8 0 0 1 12.900-6.300L5.700 16.900A8 8 0 0 1 4 12zm8 8a8 8 0 0 1-4.900-1.700L18.300 7.100A8 8 0 0 1 12 20z"/></svg></button>'}`;
     $('#waBack').onclick = () => $('#waShell').classList.remove('chat-open');
+    const bb = $('#waBlockBtn'); if (bb) bb.onclick = toggleBlock;
   }
 
   function paintThread(stick) {
@@ -1562,6 +1565,128 @@ async function renderWebConsole() {
       openChat(r.jid);
     } catch (e) { toast(e.message, 'err'); }
   };
+
+
+  /* ------------------------------------------------------------ profile, privacy, blocked contacts */
+  const PRIV_OPTS = {
+    last: ['Last seen', [['all', 'Everyone'], ['contacts', 'My contacts'], ['contact_blacklist', 'My contacts except…'], ['none', 'Nobody']]],
+    online: ['Online', [['all', 'Everyone'], ['match_last_seen', 'Same as last seen']]],
+    profile: ['Profile photo', [['all', 'Everyone'], ['contacts', 'My contacts'], ['contact_blacklist', 'My contacts except…'], ['none', 'Nobody']]],
+    status: ['About', [['all', 'Everyone'], ['contacts', 'My contacts'], ['contact_blacklist', 'My contacts except…'], ['none', 'Nobody']]],
+    readreceipts: ['Read receipts (blue ticks)', [['all', 'On'], ['none', 'Off']]],
+    groupadd: ['Who can add me to groups', [['all', 'Everyone'], ['contacts', 'My contacts'], ['contact_blacklist', 'My contacts except…']]],
+    calladd: ['Who can call me', [['all', 'Everyone'], ['known', 'Known contacts only']]],
+  };
+  const DISAPPEAR = [[0, 'Off'], [86400, '24 hours'], [604800, '7 days'], [7776000, '90 days']];
+  const profEl = $('#waProfile');
+  let profLoaded = false;
+
+  function setMeAvatar(url) {
+    const me = $('#waMe');
+    if (me && url) me.innerHTML = `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer">`;
+  }
+
+  async function openProfile() {
+    profEl.hidden = false;
+    profEl.innerHTML = `<header class="wa-prof-head"><button class="wa-icon-btn" id="waProfClose" title="Close">←</button><b>Profile</b></header><div class="chat-empty">Loading profile…</div>`;
+    $('#waProfClose').onclick = closeProfile;
+    let p, pv = null, bl = [];
+    try { p = await api(base + '/profile'); }
+    catch (e) { profEl.querySelector('.chat-empty').textContent = e.message; return; }
+    setMeAvatar(p.picture);
+    const [pvR, blR] = await Promise.allSettled([api(base + '/privacy'), api(base + '/blocklist')]);
+    if (pvR.status === 'fulfilled') pv = pvR.value.settings || {};
+    if (blR.status === 'fulfilled') bl = blR.value.blocked || [];
+    drawProfile(p, pv, bl);
+  }
+  function closeProfile() { profEl.hidden = true; }
+
+  function drawProfile(p, pv, bl) {
+    const initial = esc((p.name || bot.name || '?').charAt(0).toUpperCase());
+    const privRows = pv ? Object.entries(PRIV_OPTS).map(([k, [label, opts]]) => {
+      const cur = pv[k];
+      const known = opts.some(([v]) => v === cur);
+      return `<label class="wa-set-row"><span>${label}</span><select data-priv="${k}">${known || cur === undefined ? '' : `<option value="${esc(cur)}" selected>${esc(cur)}</option>`}${opts.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
+    }).join('') : '<div class="chat-empty">Privacy settings could not be loaded.</div>';
+    profEl.innerHTML = `
+      <header class="wa-prof-head"><button class="wa-icon-btn" id="waProfClose" title="Close">←</button><b>Profile</b></header>
+      <div class="wa-prof-body">
+        <div class="wa-prof-photo">
+          <div class="wa-prof-avatar" id="waPhotoBtn" title="Change profile photo">
+            ${p.picture ? `<img src="${esc(p.picture)}" alt="" referrerpolicy="no-referrer">` : `<span>${initial}</span>`}
+            <div class="wa-prof-cam"><svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M12 15.200a3.200 3.200 0 1 0 0-6.400 3.200 3.200 0 0 0 0 6.400zM9 2 7.200 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.200L15 2H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg><i>CHANGE PHOTO</i></div>
+          </div>
+          <input type="file" id="waPhotoFile" accept="image/jpeg,image/png,image/webp" hidden />
+          ${p.picture ? '<button class="wa-link-btn" id="waPhotoDel">Remove photo</button>' : ''}
+        </div>
+        <div class="wa-field"><label>Your name</label><div class="wa-field-row"><input id="waName" maxlength="25" value="${esc(p.name || '')}" /><button class="wa-icon-btn wa-save" id="waNameSave" title="Save name"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M9 16.2 4.800 12l-1.400 1.400L9 19 21 7l-1.400-1.400z"/></svg></button></div><small>This is the name people see when you message them.</small></div>
+        <div class="wa-field"><label>About</label><div class="wa-field-row"><input id="waAbout" maxlength="139" value="${esc(p.about || '')}" placeholder="Hey there! I am using WhatsApp." /><button class="wa-icon-btn wa-save" id="waAboutSave" title="Save about"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M9 16.2 4.800 12l-1.400 1.400L9 19 21 7l-1.400-1.400z"/></svg></button></div></div>
+        <div class="wa-field"><label>Phone number</label><div class="wa-field-row"><input value="+${esc(p.phone)}" readonly /><button class="wa-icon-btn" id="waCopyPhone" title="Copy"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg></button></div></div>
+
+        <h4 class="wa-sec">Privacy</h4>
+        ${privRows}
+        <label class="wa-set-row"><span>Default disappearing messages</span><select id="waDisappear">${DISAPPEAR.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
+        <small class="wa-note">Applies to new chats only. Privacy changes are limited to a few a minute to keep your number safe.</small>
+
+        <h4 class="wa-sec">Blocked contacts <i>${bl.length}</i></h4>
+        <div id="waBlocked">${bl.length ? bl.map((b) => `<div class="wa-blocked"><span>${esc(b.name)}</span><button class="wa-link-btn" data-unblock="${esc(b.jid)}">Unblock</button></div>`).join('') : '<div class="wa-note">You have not blocked anyone.</div>'}</div>
+      </div>`;
+    $('#waProfClose').onclick = closeProfile;
+
+    const guard = async (fn, ok) => { try { await fn(); toast(ok); } catch (e) { toast(e.message, 'err'); } };
+    $('#waNameSave').onclick = () => guard(async () => { await api(base + '/profile', { method: 'POST', body: { name: $('#waName').value } }); S.me = { ...(S.me || {}), name: $('#waName').value.trim() }; paintStatus(); }, 'Name updated');
+    $('#waAboutSave').onclick = () => guard(() => api(base + '/profile', { method: 'POST', body: { about: $('#waAbout').value } }), 'About updated');
+    $('#waCopyPhone').onclick = () => { try { navigator.clipboard.writeText('+' + p.phone); toast('Number copied'); } catch (e) { /* ignore */ } };
+    $('#waPhotoBtn').onclick = () => $('#waPhotoFile').click();
+    $('#waPhotoFile').onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try {
+        const dataUrl = await squarePhoto(f, 640);
+        await api(base + '/profile', { method: 'POST', body: { picture: dataUrl } });
+        toast('Profile photo updated');
+        openProfile();
+      } catch (er) { toast(er.message || 'Could not use that image', 'err'); }
+    };
+    const del = $('#waPhotoDel');
+    if (del) del.onclick = () => { if (confirm('Remove your profile photo?')) guard(async () => { await api(base + '/profile', { method: 'POST', body: { removePicture: true } }); const me = $('#waMe'); if (me) me.textContent = (p.name || bot.name || 'W').charAt(0).toUpperCase(); openProfile(); }, 'Photo removed'); };
+    profEl.querySelectorAll('[data-priv]').forEach((sel) => {
+      sel.onchange = () => guard(() => api(base + '/privacy', { method: 'POST', body: { key: sel.dataset.priv, value: sel.value } }), 'Privacy updated');
+    });
+    $('#waDisappear').onchange = (e) => guard(() => api(base + '/disappearing', { method: 'POST', body: { seconds: Number(e.target.value) } }), 'Default timer updated');
+    profEl.querySelectorAll('[data-unblock]').forEach((b) => {
+      b.onclick = () => guard(async () => { await api(base + '/block', { method: 'POST', body: { jid: b.dataset.unblock, block: false } }); b.closest('.wa-blocked').remove(); }, 'Contact unblocked');
+    });
+  }
+
+  // Centre-crop to a square and shrink, so any phone photo uploads in well under 200 KB.
+  function squarePhoto(file, size) {
+    return new Promise((resolve, reject) => {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return reject(new Error('Choose a JPEG, PNG or WebP image'));
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const side = Math.min(img.width, img.height);
+        const c = document.createElement('canvas');
+        c.width = c.height = Math.min(size, side);
+        c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', 0.88));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a readable image')); };
+      img.src = url;
+    });
+  }
+
+  $('#waMe').onclick = openProfile;
+  $('#waProfBtn').onclick = openProfile;
+  // Block / unblock the open contact from the chat header.
+  async function toggleBlock() {
+    const c = S.chats.find((x) => x.jid === S.jid) || S.chat;
+    if (!c || c.isGroup) return;
+    if (!confirm(`Block ${c.name}? They will no longer be able to message or call you.`)) return;
+    try { await api(base + '/block', { method: 'POST', body: { jid: S.jid, block: true } }); toast(c.name + ' blocked. Unblock from Profile.'); } catch (e) { toast(e.message, 'err'); }
+  }
 
   await loadChats();
 

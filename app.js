@@ -1140,6 +1140,13 @@ app.post('/api/bots/:id/web/lookup', requireAuth, (req, res) => { const b = ownB
 app.get('/api/bots/:id/web/presence', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.presence(b, req, res); });
 app.post('/api/bots/:id/web/typing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.typing(b, req, res); });
 app.get('/api/bots/:id/web/avatar', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.avatar(b, req, res); });
+app.get('/api/bots/:id/web/profile', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.profile(b, req, res); });
+app.post('/api/bots/:id/web/profile', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.profileSet(b, req, res); });
+app.get('/api/bots/:id/web/privacy', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.privacy(b, req, res); });
+app.post('/api/bots/:id/web/privacy', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.privacySet(b, req, res); });
+app.get('/api/bots/:id/web/blocklist', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.blocklist(b, req, res); });
+app.post('/api/bots/:id/web/block', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.block(b, req, res); });
+app.post('/api/bots/:id/web/disappearing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.disappearing(b, req, res); });
 app.get('/api/bots/:id/web/info', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.info(b, req, res); });
 app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.stream(b, req, res, req.user.id); });
 
