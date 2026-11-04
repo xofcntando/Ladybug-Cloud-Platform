@@ -5,14 +5,14 @@
 
 module.exports = {
     // Bot Owner Configuration
-    ownerNumber: ['9876543210'], // Add your number without + or spaces (e.g., 919876543210)
+    ownerNumber: process.env.OWNER_NUMBER ? process.env.OWNER_NUMBER.split(',').map((n) => n.replace(/\D/g, '')).filter(Boolean) : ['9876543210'], // Add your number without + or spaces (e.g., 919876543210)
     ownerName: ['Ntandomods'], // Owner names corresponding to ownerNumber array
 
     // Bot Configuration
     botName: 'Ladybug Mini',
     brand: 'Ntandomods',
-    prefix: '.',
-    sessionName: 'session',
+    prefix: process.env.PREFIX || '.',
+    sessionName: process.env.SESSION_NAME || 'session', // the platform gives every bot its own folder
     sessionID: process.env.SESSION_ID || '', //Paste your session here
     newsletterJid: '120363161513685998@newsletter', // Newsletter JID for menu forwarding
     updateZipUrl: 'https://github.com/kids-codentando/Ladybug-Mini/archive/refs/heads/main.zip', // URL to latest code zip for .update command
@@ -21,7 +21,7 @@ module.exports = {
         packname: 'Ladybug Mini',
 
         // Bot Behavior
-        selfMode: false, // Private mode - only owner can use commands
+        selfMode: /^(1|true|yes|on)$/i.test(process.env.SELF_MODE || ''), // Private mode - only owner can use commands
         autoRead: false,
         autoTyping: false,
         autoBio: false,

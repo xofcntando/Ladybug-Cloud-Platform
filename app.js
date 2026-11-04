@@ -18,6 +18,7 @@ const bots = require('./lib/bots');
 const installer = require('./lib/installer');
 try { console.log('[web-bridge] hook:', installer.ensureWebBridge()); } catch (e) { console.error('[web-bridge] hook failed:', e.message); }
 try { console.log('[custom-commands] hook:', installer.ensureCustomCommands()); } catch (e) { console.error('[custom-commands] hook failed:', e.message); }
+try { console.log('[session-fix] hook:', installer.ensureSessionFix()); } catch (e) { console.error('[session-fix] hook failed:', e.message); }
 const sessiongen = require('./lib/sessiongen');
 const FileSessionStore = require('./lib/session-store');
 const billing = require('./lib/billing');
@@ -1136,6 +1137,10 @@ app.get('/api/bots/:id/web/messages', requireAuth, (req, res) => { const b = own
 app.post('/api/bots/:id/web/send', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.send(b, req, res); });
 app.post('/api/bots/:id/web/read', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.read(b, req, res); });
 app.post('/api/bots/:id/web/lookup', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.lookup(b, req, res); });
+app.get('/api/bots/:id/web/presence', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.presence(b, req, res); });
+app.post('/api/bots/:id/web/typing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.typing(b, req, res); });
+app.get('/api/bots/:id/web/avatar', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.avatar(b, req, res); });
+app.get('/api/bots/:id/web/info', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.info(b, req, res); });
 app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.stream(b, req, res, req.user.id); });
 
 // ---------------------------------------------------------------- linked devices (restore)
