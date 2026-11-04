@@ -301,6 +301,7 @@ module.exports = {
       let audioData;
       let audioBuffer;
       let downloadSuccess = false;
+      const failures = [];
 
       // Local yt-dlp runs on this host (no third-party cookies needed). With cookies configured it goes first.
       const localYtdlp = { name: 'yt-dlp (local)', method: () => ytdlpAudio(video.url) };
@@ -380,12 +381,18 @@ module.exports = {
           }
         } catch (apiErr) {
           console.log(`${apiMethod.name} API failed:`, apiErr.message);
+          failures.push(`${apiMethod.name}: ${String(apiErr.message).slice(0, 120)}`);
           continue;
         }
       }
 
       if (!downloadSuccess || !audioBuffer) {
-        throw new Error('All download sources failed');
+        const botCheck = failures.some((f) => /sign in to confirm|not a bot|cookies/i.test(f));
+        throw new Error(
+          botCheck
+            ? 'All download sources failed (YouTube is blocking this server - add YT_COOKIES_B64)'
+            : `All download sources failed [${failures.join(' | ')}]`
+        );
       }
 
       if (!audioBuffer || audioBuffer.length === 0) {
@@ -449,7 +456,11 @@ module.exports = {
           '❌ Content unavailable (451). This may be due to legal restrictions or regional blocking.';
       } else if (err.message && err.message.includes('All download sources failed')) {
         errorMessage =
-          '❌ Could not download this song right now. YouTube may be blocking the server - please try again later or try a different song.';
+          '❌ Could not download this song right now. ' +
+          (err.message.includes('YT_COOKIES_B64')
+            ? 'YouTube is blocking the bot server (owner: add YouTube cookies).'
+            : 'Please try again later or try a different song.');
+        console.error('[song]', err.message);
         // Operator hint goes to the logs, not to chat users
         console.error(
           '[song] All sources failed. Set YT_COOKIES_B64 (base64 of a YouTube cookies.txt) on the host and redeploy.'

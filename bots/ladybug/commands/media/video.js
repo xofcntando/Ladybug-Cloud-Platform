@@ -167,11 +167,13 @@ async function resolveVideo({ url, query }) {
   ];
   if (hasCookies()) steps.unshift(steps.splice(2, 1)[0]);
   let lastError;
+  const failures = [];
   for (const [name, run] of steps) {
     try {
       return await run();
     } catch (err) {
       lastError = err;
+      failures.push(`${name}: ${String(err?.message || err).slice(0, 120)}`);
       console.error(`[video] ${name} failed:`, err?.message || err);
     }
   }
@@ -182,7 +184,13 @@ async function resolveVideo({ url, query }) {
     if (!dl_url) throw new Error('Legacy API returned no download URL');
     return { title: legacy?.title || 'Video', dl_url, sourceUrl: videoUrl };
   } catch (err) {
-    throw lastError || err;
+    const botCheck = failures.some((f) => /sign in to confirm|not a bot|cookies/i.test(f));
+    const summary = failures.join(' | ');
+    throw new Error(
+      botCheck
+        ? `YouTube is blocking this server. Add YouTube cookies (YT_COOKIES_B64). [${summary}]`
+        : `All sources failed. [${summary}]`
+    );
   }
 }
 

@@ -137,8 +137,11 @@ function run(bin, args, timeoutMs) {
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) return resolve({ stdout, stderr });
-      const line = stderr.trim().split('\n').filter(Boolean).slice(-1)[0] || `yt-dlp exited ${code}`;
-      reject(new Error(line));
+      const lines = stderr.trim().split('\n').filter(Boolean);
+      const line = lines.reverse().find((l) => /ERROR/.test(l)) || lines[0] || `yt-dlp exited ${code}`;
+      const err = new Error(line.replace(/^ERROR:\s*/, '').slice(0, 300));
+      err.botCheck = /sign in to confirm|not a bot|cookies/i.test(stderr);
+      reject(err);
     });
   });
 }
