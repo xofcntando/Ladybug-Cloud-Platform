@@ -72,7 +72,7 @@ module.exports = {
 
       // Ladybug Mini media API (song/video/tiktok/facebook/instagram downloaders)
     // Change once here — all media commands read from this.
-    mediaApiUrl: (process.env.YT_API_URL || 'https://api-xgp2.onrender.com').replace(/\/$/, ''),
+    mediaApiUrl: (process.env.YT_API_URL || 'https://knightbotapi.stream').replace(/\/$/, ''),
     mediaApiKey: process.env.YT_API_KEY || 'knight',
     // Ladybug public API (reactions GIFs, etc.) — powered by Ntandomods
     ladybugApiUrl: (process.env.LADYBUG_API_URL || 'https://knightbotapi.stream').replace(/\/$/, ''),
