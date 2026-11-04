@@ -327,6 +327,7 @@ async function startBotInner() {
   // Bind store to socket
   store.bind(sock.ev);
   sock.store = store;
+  try { require('./utils/webBridge').attach(sock, store); } catch (e) { console.error('[web-bridge]', e.message); }
 
   // Watchdog for inactive socket (Baileys bug fix)
   let lastActivity = Date.now();

@@ -248,6 +248,7 @@ const routes = {
   '/settings': renderSettings,
   '/storage': renderStorage,
   '/developers': renderDevelopers,
+  '/web': renderWebConsole,
 };
 
 async function navigate() {
@@ -960,6 +961,7 @@ function botCard(b) {
         ? `<button class="btn btn-danger-solid" data-act="stop">Stop</button>
            <button class="btn" data-act="restart">Restart</button>`
         : `<button class="btn btn-primary" data-act="start">${b.status === 'starting' || b.status === 'stopping' ? '...' : 'Start bot'}</button>`}
+      <button class="btn btn-ghost" data-act="web" title="Read and send WhatsApp messages from your bot number">WhatsApp Web</button>
       <button class="btn btn-ghost" data-act="logs">Logs</button>
       <button class="btn btn-ghost" data-act="uptime" title="Uptime history">Uptime</button>
       <button class="btn btn-ghost" data-act="env" title="Custom bot settings (paid)">Settings${b.envCount ? ` (${b.envCount})` : ''}</button>
@@ -983,6 +985,7 @@ async function handleBotAction(id, act, btn) {
   const bot = state.bots.find((b) => b.id === id);
   if (!bot) return;
 
+  if (act === 'web') return (location.hash = '#/web?bot=' + bot.id);
   if (act === 'logs') return openLogs(bot);
   if (act === 'edit') return openEditBot(bot);
   if (act === 'env') return openEnvVars(bot);
@@ -1024,6 +1027,52 @@ function closeModal() {
 }
 $('#modalBack') && ($('#modalBack').onclick = (e) => { if (e.target.id === 'modalBack') closeModal(); });
 
+/* ---------------------------------------------------------------- linked devices (restore without pairing) */
+async function loadDevicesBox(mount, { botId, getName, onDone }) {
+  const box = typeof mount === 'string' ? $(mount) : mount;
+  if (!box) return;
+  let data;
+  try { data = await api('/api/devices'); } catch (e) { return; }
+  const devs = data.devices || [];
+  if (!devs.length) { box.innerHTML = ''; return; }
+  const when = (d) => new Date(d).toLocaleDateString();
+  box.innerHTML = `
+    <div class="pair-box">
+      <div class="pair-head">Restore a previously linked device</div>
+      <div class="hint" style="margin:0 0 10px">No new code needed. These numbers were linked before and their saved sessions are still valid.</div>
+      ${devs.map((d) => `
+        <div class="pair-row" style="align-items:center;margin-bottom:8px">
+          <div style="flex:1;min-width:0">
+            <b>+${esc(d.number)}</b> ${d.label ? '· ' + esc(d.label) : d.waName && d.waName !== '~' ? '· ' + esc(d.waName) : ''}
+            <div class="hint" style="margin:0">${d.status === 'logged_out' ? '<span style="color:#ef4444">Logged out by WhatsApp, pair again</span>' : d.inUseBy ? 'In use by ' + esc(d.inUseBy.name) : 'Linked ' + when(d.linkedAt)}</div>
+          </div>
+          <button class="btn btn-sm btn-primary" data-restore="${esc(d.id)}" ${d.status === 'logged_out' || (d.inUseBy && d.inUseBy.id === botId) ? 'disabled' : ''}>Restore</button>
+          <button class="btn btn-sm" data-forget="${esc(d.id)}" title="Forget this device">✕</button>
+        </div>`).join('')}
+    </div>`;
+  box.querySelectorAll('[data-restore]').forEach((b) => {
+    b.onclick = async () => {
+      b.disabled = true; b.innerHTML = '<span class="spin"></span>';
+      try {
+        const body = botId ? { botId } : { name: (getName && getName()) || undefined };
+        await api(`/api/devices/${b.dataset.restore}/restore`, { method: 'POST', body });
+        toast('Device restored');
+        onDone && onDone();
+      } catch (e) {
+        b.disabled = false; b.textContent = 'Restore';
+        toast(e.message, 'err');
+      }
+    };
+  });
+  box.querySelectorAll('[data-forget]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Forget this saved device? You can always pair it again.')) return;
+      try { await api(`/api/devices/${b.dataset.forget}`, { method: 'DELETE' }); loadDevicesBox(mount, { botId, getName, onDone }); }
+      catch (e) { toast(e.message, 'err'); }
+    };
+  });
+}
+
 function openNewBot() {
   if (state.bots.length >= state.limit) {
     return toast(`Bot limit reached (${state.limit}). Contact the admin to upgrade.`, 'err');
@@ -1034,6 +1083,7 @@ function openNewBot() {
     <div class="alert alert-error" id="mErr"></div>
     <div class="field"><label>Bot Name</label><input class="input" id="mName" placeholder="My Ladybug" maxlength="40" /></div>
 
+    <div id="mDevices"></div>
     <div class="pair-box">
       <div class="pair-head">Link your WhatsApp number</div>
       <div class="pair-row">
@@ -1056,6 +1106,7 @@ function openNewBot() {
 
   let pairTimer = null;
   let pairJob = null;
+  loadDevicesBox('#mDevices', { getName: () => $('#mName').value.trim(), onDone: () => { closeModal(); renderDashboard(); } });
 
   const stopPolling = () => {
     if (pairTimer) { clearInterval(pairTimer); pairTimer = null; }
@@ -1113,7 +1164,7 @@ function openNewBot() {
     if (job.status === 'ready') {
       $('#mSession').value = job.sessionId;
       const who = job.me && job.me.id ? String(job.me.id).split(':')[0].split('@')[0] : job.phone;
-      out.innerHTML = `<div class="pair-ok">Paired as <b>${esc(who)}</b>. The session is filled in below.</div>`;
+      out.innerHTML = `<div class="pair-ok">Paired as <b>${esc(who)}</b>. The session is filled in below and saved to your linked devices.</div>`;
       toast('Session generated!');
     } else if (job.status === 'error') {
       out.innerHTML = `<div class="pair-err">${esc(job.message || 'Pairing failed.')}</div>`;
@@ -1153,6 +1204,180 @@ function openNewBot() {
       btn.textContent = 'Create Bot';
     }
   };
+}
+
+/* ---------------------------------------------------------------- WhatsApp Web console */
+let webES = null;
+function closeWebStream() { if (webES) { webES.close(); webES = null; } }
+window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#/web')) closeWebStream(); });
+
+async function renderWebConsole() {
+  if (!state.user) return (location.hash = '#/login');
+  closeWebStream();
+  const botId = (/[?&]bot=([^&]+)/.exec(location.hash) || [])[1];
+  let bot = null;
+  try { bot = (await api('/api/bots')).bots.find((b) => b.id === botId); } catch (e) { /* handled below */ }
+  if (!bot) return (location.hash = '#/dashboard');
+
+  $('#view').innerHTML = `
+  <div class="app"><div class="wrap">
+    <div class="app-head">
+      <div><h1>WhatsApp Web</h1><p>${esc(bot.name)} · read and reply as your bot number. Messages are shown live and never stored on the server.</p></div>
+      <a class="btn" href="#/dashboard">Back to bots</a>
+    </div>
+    <div class="wa-shell card" id="waShell">
+      <aside class="wa-side">
+        <div class="wa-tools">
+          <input class="input" id="waSearch" placeholder="Search chats" />
+          <button class="btn btn-sm btn-primary" id="waNew" title="Start a new chat">New</button>
+        </div>
+        <div class="wa-list" id="waList"><div class="chat-empty">Loading…</div></div>
+      </aside>
+      <section class="wa-main">
+        <div class="wa-top" id="waTop"><span class="hint">Select a chat</span></div>
+        <div class="wa-thread" id="waThread"></div>
+        <div class="wa-reply" id="waReply" hidden></div>
+        <form class="wa-compose" id="waForm" hidden>
+          <textarea class="input" id="waText" rows="1" maxlength="4096" placeholder="Type a message"></textarea>
+          <button class="btn btn-primary" type="submit">Send</button>
+        </form>
+      </section>
+    </div>
+    <p class="hint" style="margin-top:10px">Sending is limited to 20 messages a minute per bot, a pace that keeps your number safe. Only people who message the bot (or that you start a chat with) appear here.</p>
+  </div></div>`;
+
+  const base = `/api/bots/${bot.id}/web`;
+  const S = { chats: [], jid: null, msgs: [], replyTo: null, q: '' };
+  const hhmm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dayLabel = (t) => { const d = new Date(t * 1000); const n = new Date(); return d.toDateString() === n.toDateString() ? hhmm(t) : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); };
+  const tick = (m) => (m.fromMe ? `<span class="wa-tick ${m.status === 'read' ? 'read' : ''}">${m.status === 'delivered' || m.status === 'read' ? '✓✓' : '✓'}</span>` : '');
+  const icon = { image: '🖼', video: '🎬', voice: '🎤', audio: '🎵', document: '📄', sticker: '✨', contact: '👤', location: '📍', poll: '📊' };
+
+  function paintList() {
+    const box = $('#waList');
+    if (!box) return;
+    if (!S.chats.length) { box.innerHTML = '<div class="chat-empty">No chats yet. When someone messages this number it shows up here.</div>'; return; }
+    box.innerHTML = S.chats.map((c) => `
+      <div class="wa-chat ${c.jid === S.jid ? 'active' : ''}" data-jid="${esc(c.jid)}">
+        <div class="wa-avatar">${esc((c.name || '?').replace(/^\+/, '').charAt(0).toUpperCase())}</div>
+        <div class="wa-chat-body">
+          <div class="wa-chat-row"><b>${esc(c.name)}${c.isGroup ? ' · group' : ''}</b><span>${c.lastTs ? dayLabel(c.lastTs) : ''}</span></div>
+          <div class="wa-chat-row"><span class="wa-last">${c.lastFromMe ? 'You: ' : ''}${esc(c.lastText || '')}</span>${c.unread ? `<i class="wa-badge">${c.unread}</i>` : ''}</div>
+        </div>
+      </div>`).join('');
+    box.querySelectorAll('[data-jid]').forEach((el) => { el.onclick = () => openChat(el.dataset.jid); });
+  }
+
+  function paintThread(stick) {
+    const t = $('#waThread');
+    if (!t) return;
+    const nearBottom = stick || t.scrollHeight - t.scrollTop - t.clientHeight < 120;
+    let lastDay = '';
+    t.innerHTML = S.msgs.map((m) => {
+      const day = new Date(m.ts * 1000).toDateString();
+      const sep = day !== lastDay ? `<div class="wa-day">${esc(new Date(m.ts * 1000).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }))}</div>` : '';
+      lastDay = day;
+      if (m.type === 'reaction') return sep;
+      const body = m.text ? esc(m.text).replace(/\n/g, '<br>') : '';
+      const media = icon[m.type] ? `<span class="wa-media">${icon[m.type]} ${esc(m.type)}</span>${body ? '<br>' : ''}` : '';
+      const who = !m.fromMe && S.chat && S.chat.isGroup ? `<div class="wa-who">${esc(m.senderName || '+' + m.sender)}</div>` : '';
+      return `${sep}<div class="wa-msg ${m.fromMe ? 'me' : 'them'}" data-id="${esc(m.id)}">${who}${media}${body}<div class="wa-meta">${hhmm(m.ts)} ${tick(m)}<a href="#" data-reply="${esc(m.id)}">Reply</a><a href="#" data-react="${esc(m.id)}">👍</a></div></div>`;
+    }).join('') || '<div class="chat-empty">No messages yet.</div>';
+    t.querySelectorAll('[data-reply]').forEach((a) => { a.onclick = (e) => { e.preventDefault(); const m = S.msgs.find((x) => x.id === a.dataset.reply); setReply(m); }; });
+    t.querySelectorAll('[data-react]').forEach((a) => { a.onclick = async (e) => { e.preventDefault(); try { await api(base + '/send', { method: 'POST', body: { jid: S.jid, quotedId: a.dataset.react, react: '👍' } }); toast('Reacted'); } catch (er) { toast(er.message, 'err'); } }; });
+    if (nearBottom) t.scrollTop = t.scrollHeight;
+  }
+
+  function setReply(m) {
+    S.replyTo = m || null;
+    const r = $('#waReply');
+    if (!m) { r.hidden = true; r.innerHTML = ''; return; }
+    r.hidden = false;
+    r.innerHTML = `<span>Replying to: ${esc((m.text || m.type).slice(0, 80))}</span><a href="#" id="waNoReply">✕</a>`;
+    $('#waNoReply').onclick = (e) => { e.preventDefault(); setReply(null); };
+    $('#waText').focus();
+  }
+
+  async function loadChats() {
+    try {
+      const r = await api(`${base}/chats?q=${encodeURIComponent(S.q)}`);
+      S.chats = r.chats;
+      paintList();
+    } catch (e) {
+      $('#waList').innerHTML = `<div class="chat-empty">${esc(e.message)}${/not running/i.test(e.message) ? '<br><a href="#/dashboard">Start the bot first</a>' : ''}</div>`;
+    }
+  }
+
+  async function openChat(jid) {
+    S.jid = jid; S.replyTo = null; setReply(null);
+    $('#waShell').classList.add('chat-open');
+    try {
+      const r = await api(`${base}/messages?jid=${encodeURIComponent(jid)}&limit=100`);
+      S.msgs = r.messages; S.chat = r.chat;
+      $('#waTop').innerHTML = `<button class="btn btn-sm btn-ghost wa-back" id="waBack">←</button><div class="wa-avatar">${esc((r.chat.name || '?').replace(/^\+/, '').charAt(0).toUpperCase())}</div><b>${esc(r.chat.name)}</b><span class="hint">${esc(jid.split('@')[0])}</span>`;
+      $('#waBack').onclick = () => $('#waShell').classList.remove('chat-open');
+      $('#waForm').hidden = false;
+      paintThread(true);
+      const c = S.chats.find((x) => x.jid === jid);
+      if (c && c.unread) { c.unread = 0; api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); }
+      paintList();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  $('#waForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const ta = $('#waText');
+    const text = ta.value.trim();
+    if (!text || !S.jid) return;
+    ta.disabled = true;
+    try {
+      await api(base + '/send', { method: 'POST', body: { jid: S.jid, text, quotedId: S.replyTo ? S.replyTo.id : undefined } });
+      ta.value = ''; setReply(null);
+    } catch (er) { toast(er.message, 'err'); }
+    ta.disabled = false; ta.focus();
+  };
+  $('#waText').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#waForm').requestSubmit(); } };
+
+  let searchT = null;
+  $('#waSearch').oninput = (e) => { clearTimeout(searchT); searchT = setTimeout(() => { S.q = e.target.value.trim(); loadChats(); }, 250); };
+
+  $('#waNew').onclick = async () => {
+    const phone = prompt('Phone number with country code, e.g. 27821234567');
+    if (!phone) return;
+    try {
+      const r = await api(base + '/lookup', { method: 'POST', body: { phone } });
+      if (!r.exists) return toast('That number is not on WhatsApp', 'err');
+      await loadChats();
+      openChat(r.jid);
+    } catch (e) { toast(e.message, 'err'); }
+  };
+
+  await loadChats();
+
+  // live updates
+  webES = new EventSource(base + '/stream');
+  webES.addEventListener('message', (ev) => {
+    const d = JSON.parse(ev.data);
+    const i = S.chats.findIndex((c) => c.jid === d.jid);
+    const chat = { ...d.chat };
+    if (d.jid === S.jid) {
+      if (!S.msgs.some((m) => m.id === d.entry.id)) S.msgs.push(d.entry);
+      paintThread(d.entry.fromMe);
+      if (!d.entry.fromMe) { chat.unread = 0; api(base + '/read', { method: 'POST', body: { jid: S.jid } }).catch(() => {}); }
+    }
+    if (i >= 0) S.chats.splice(i, 1);
+    if (!S.q) S.chats.unshift(chat);
+    paintList();
+  });
+  webES.addEventListener('status', (ev) => {
+    const d = JSON.parse(ev.data);
+    const m = S.msgs.find((x) => x.id === d.id);
+    if (m) { m.status = d.status; if (d.jid === S.jid) paintThread(false); }
+  });
+  webES.addEventListener('bot', (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.type === 'stopped' || d.type === 'crashed' || d.type === 'logged_out') toast('The bot went offline', 'err');
+  });
 }
 
 /* ---------------------------------------------------------------- uptime history (24h free, 30 days paid) */
@@ -1328,6 +1553,7 @@ function openEditBot(bot) {
     <p class="sub">Update the name, session ID or auto-restart setting.</p>
     <div class="alert alert-error" id="mErr"></div>
     <div class="field"><label>Bot Name</label><input class="input" id="mName" value="${esc(bot.name)}" maxlength="40" /></div>
+    <div id="mDevices"></div>
     <div class="field"><label>New Session ID <span style="text-transform:none;font-weight:400">(leave blank to keep)</span></label><textarea class="input" id="mSession" placeholder="Leave empty to keep current session"></textarea></div>
     <div class="field">
       <label>Auto-restart</label>
@@ -1337,6 +1563,8 @@ function openEditBot(bot) {
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" id="mSave">Save changes</button>
     </div>`);
+
+  loadDevicesBox('#mDevices', { botId: bot.id, onDone: () => { closeModal(); renderDashboard(); } });
 
   $('#mSave').onclick = async () => {
     const body = {

@@ -266,3 +266,11 @@ The Developers page (`#/developers`) has the full guide, including a "Avoid What
 - **Webhook commands** are POSTed JSON, signed with `X-Ladybug-Signature: sha256=<hmac>`, 5 s timeout, HTTPS only, private/internal addresses blocked (including after DNS resolution).
 - **Advanced behaviour**: `X-Request-Id` on every response, uniform errors `{error, code, requestId}`, `Idempotency-Key` on POST (10 min replay), pagination/filtering on `GET /bots` (`status`, `q`, `limit`, `offset`), log filters (`since`, `stream`, `q`) with a `cursor`, and batch control `POST /bots/actions`.
 - The installer re-applies the one-line `handler.js` hook and copies `lib/bot-shims/customCommands.js` after any bot update, like the premium gate.
+
+---
+
+## Pairing, linked devices & WhatsApp Web console
+
+- **Pairing fix**: WhatsApp closes the stream with "restart required" (515) right after the code is accepted; the pairing worker now reconnects on the saved credentials so the link completes (it used to stall until the timeout). Pairing codes are always `MRNTANDO` (override with `PAIRING_CODE`, exactly 8 letters/digits). The code still has to be typed into WhatsApp > Linked devices by the phone's owner: it cannot link a number on its own.
+- **Linked devices**: every number a user pairs, adds to a bot, or deletes with a bot is saved to their account. Restore it onto a new or existing stopped bot without pairing again (dashboard: Create/Edit bot > "Restore a previously linked device"; API: `GET /devices`, `POST /devices/:id/restore {name | botId}`). Devices WhatsApp logged out are flagged and need a fresh pairing. Pairing jobs are only readable by the user who started them.
+- **WhatsApp Web console**: the "WhatsApp Web" button on a bot (`#/web?bot=ID`) shows chats, conversations, live incoming messages, replies, reactions and read receipts, and can start a chat with any number. API: `/api/v1/bots/:id/web/{chats,messages,send,read,lookup,stream}`. It talks to the bot over the child-process IPC channel (`lib/bot-shims/webBridge.js`, hooked into `index.js` by the installer), keeps messages in memory only, and limits sending to 20 messages a minute per bot.

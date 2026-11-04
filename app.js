@@ -16,6 +16,7 @@ const os = require('os');
 const db = require('./lib/store');
 const bots = require('./lib/bots');
 const installer = require('./lib/installer');
+try { console.log('[web-bridge] hook:', installer.ensureWebBridge()); } catch (e) { console.error('[web-bridge] hook failed:', e.message); }
 try { console.log('[custom-commands] hook:', installer.ensureCustomCommands()); } catch (e) { console.error('[custom-commands] hook failed:', e.message); }
 const sessiongen = require('./lib/sessiongen');
 const FileSessionStore = require('./lib/session-store');
@@ -28,6 +29,7 @@ const uptime = require('./lib/uptime');
 const apikeys = require('./lib/apikeys');
 const webhooks = require('./lib/webhooks');
 const sessioninfo = require('./lib/sessioninfo');
+const devices = require('./lib/devices');
 const compression = require('compression');
 const storage = require('./lib/storage');
 const { securityHeaders, rateLimit } = require('./lib/security');
@@ -841,10 +843,18 @@ function createBotFor(user, { name, sessionId }) {
     status: 'stopped',
   };
   db.addBot(bot);
+  devices.record(user, { sessionId: bot.sessionId, source: 'bot', botId: bot.id });
   return { code: 200, body: { ok: true, bot: botView(bot) } };
 }
 
+function wipeSessionFolder(bot) {
+  try { fs.rmSync(bots.sessionDirFor(bot), { recursive: true, force: true }); } catch (e) { /* ignore */ }
+}
+
 function deleteBotFor(bot) {
+  // keep the linked number so the user can restore it later
+  const owner = db.findUserById(bot.userId);
+  if (owner && bot.sessionId) devices.record(owner, { sessionId: bot.sessionId, source: 'bot-deleted' });
   bots.stop(bot.id);
   db.deleteBot(bot.id);
   try { require('./lib/customcommands').purge(bot.id); } catch (e) { /* ignore */ }
@@ -951,7 +961,19 @@ function patchBotFor(bot, body) {
     patch.sessionId = nextSession;
   }
   if (typeof body.autoRestart === 'boolean') patch.autoRestart = body.autoRestart;
+  const sessionChanged = patch.sessionId && patch.sessionId !== bot.sessionId;
+  if (sessionChanged) {
+    // A different WhatsApp account must never inherit the old account's key files.
+    if (bots.status(bot.id).running) {
+      return { code: 409, body: { error: 'Stop the bot before changing its WhatsApp session.' } };
+    }
+    wipeSessionFolder(bot);
+  }
   db.updateBot(bot.id, patch);
+  if (sessionChanged) {
+    const owner = db.findUserById(bot.userId);
+    if (owner) devices.record(owner, { sessionId: patch.sessionId, source: 'bot', botId: bot.id });
+  }
   return { code: 200, body: { ok: true, bot: botView(db.findBotById(bot.id)) } };
 }
 
@@ -1076,9 +1098,20 @@ app.delete('/api/bots/:id/logs', requireAuth, (req, res) => {
 // ---------------------------------------------------------------- sessions
 // In-browser session generator: request a pairing code, then poll for the
 // finished `Ladybug!...` session id.
+const pairOwners = new Map(); // jobId -> userId (a pairing job is only readable by whoever started it)
+function pairingFor(user, job) {
+  // Save the finished session as a linked device so it can be restored later.
+  if (job && job.status === 'ready' && job.sessionId) {
+    const dev = devices.record(user, { sessionId: job.sessionId, source: 'pairing' });
+    if (dev) job.device = devices.view(dev);
+  }
+  return job;
+}
 app.post('/api/session/pair', requireAuth, (req, res) => {
   try {
     const job = sessiongen.start((req.body || {}).phone);
+    pairOwners.set(job.id, req.user.id);
+    setTimeout(() => pairOwners.delete(job.id), 30 * 60_000).unref();
     res.json({ ok: true, job });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
@@ -1086,14 +1119,89 @@ app.post('/api/session/pair', requireAuth, (req, res) => {
 });
 
 app.get('/api/session/pair/:id', requireAuth, (req, res) => {
-  const job = sessiongen.get(req.params.id);
+  const job = pairOwners.get(req.params.id) === req.user.id ? sessiongen.get(req.params.id) : null;
   if (!job) return res.status(404).json({ error: 'Pairing job not found or expired.' });
-  res.json({ job });
+  res.json({ job: pairingFor(req.user, job) });
 });
 
 app.delete('/api/session/pair/:id', requireAuth, (req, res) => {
-  sessiongen.cancel(req.params.id);
+  if (pairOwners.get(req.params.id) === req.user.id) sessiongen.cancel(req.params.id);
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------- web console ("WhatsApp Web" for a bot's number)
+const webconsole = require('./lib/webconsole');
+app.get('/api/bots/:id/web/chats', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.chats(b, req, res); });
+app.get('/api/bots/:id/web/messages', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.messages(b, req, res); });
+app.post('/api/bots/:id/web/send', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.send(b, req, res); });
+app.post('/api/bots/:id/web/read', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.read(b, req, res); });
+app.post('/api/bots/:id/web/lookup', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.lookup(b, req, res); });
+app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.stream(b, req, res, req.user.id); });
+
+// ---------------------------------------------------------------- linked devices (restore)
+/** Attach a saved device to an existing bot (botId) or to a brand new bot (name). Returns { code, body }. */
+function restoreDeviceFor(user, dev, { botId, name, force } = {}) {
+  if (dev.status === 'logged_out' && !force) {
+    return { code: 409, body: { error: 'WhatsApp logged this device out, so its saved session no longer works. Pair the number again to link it.', code: 'device_logged_out' } };
+  }
+  let r;
+  if (botId) {
+    const bot = db.findBotById(botId);
+    if (!bot || bot.userId !== user.id) return { code: 404, body: { error: 'Bot not found' } };
+    if (bot.sessionId === dev.sessionId) return { code: 200, body: { ok: true, bot: botView(bot), note: 'That bot already uses this device.' } };
+    r = patchBotFor(bot, { sessionId: dev.sessionId });
+  } else {
+    r = createBotFor(user, { name: name || dev.label || `Bot ${dev.number}`, sessionId: dev.sessionId });
+  }
+  if (r.code === 200) devices.touch(user, dev.id, r.body.bot && r.body.bot.id);
+  return r;
+}
+
+app.get('/api/devices', requireAuth, (req, res) => {
+  const devs = devices.list(req.user);
+  const inUse = new Map(db.botsForUser(req.user.id).map((b) => [b.sessionId, b]));
+  res.json({
+    devices: devs.map((d) => {
+      const full = devices.find(req.user, d.id);
+      const b = inUse.get(full.sessionId);
+      return { ...d, inUseBy: b ? { id: b.id, name: b.name } : null };
+    }),
+    max: devices.MAX_DEVICES,
+  });
+});
+
+app.post('/api/devices/:id/restore', requireAuth, (req, res) => {
+  const dev = devices.find(req.user, req.params.id);
+  if (!dev) return res.status(404).json({ error: 'Device not found' });
+  const r = restoreDeviceFor(req.user, dev, req.body || {});
+  res.status(r.code).json(r.body);
+});
+
+app.patch('/api/devices/:id', requireAuth, (req, res) => {
+  const d = devices.rename(req.user, req.params.id, (req.body || {}).label);
+  if (!d) return res.status(404).json({ error: 'Device not found' });
+  res.json({ ok: true, device: devices.view(d) });
+});
+
+app.delete('/api/devices/:id', requireAuth, (req, res) => {
+  if (!devices.remove(req.user, req.params.id)) return res.status(404).json({ error: 'Device not found' });
+  res.json({ ok: true });
+});
+
+// One-off backfill: every existing bot's number becomes a restorable linked device.
+try {
+  for (const b of db.listBots()) {
+    const u = db.findUserById(b.userId);
+    if (u && b.sessionId) devices.record(u, { sessionId: b.sessionId, source: 'bot', botId: b.id });
+  }
+} catch (e) { console.error('[devices] backfill failed:', e.message); }
+
+// WhatsApp logged the number out: flag every saved copy so nobody tries to restore a dead session.
+require('./lib/events').bus.on('bot', (e) => {
+  if (e && e.type === 'logged_out') {
+    const b = db.findBotById(e.botId);
+    if (b) devices.markLoggedOut(b.sessionId);
+  }
 });
 
 // ---------------------------------------------------------------- public status
@@ -1376,6 +1484,7 @@ app.get('/api/admin/storage', requireAdmin, (req, res) => {
 require('./lib/public-api')({
   app, db, bots, billing, publicUser, botView, apikeys, webhooks, uptime, envvars, sessiongen,
   startBotFor, stopBotFor, restartBotFor, createBotFor, deleteBotFor, patchBotFor, setBotEnvFor, logScrubber,
+  devices, restoreDeviceFor, pairingFor,
 });
 
 // ---------------------------------------------------------------- static
