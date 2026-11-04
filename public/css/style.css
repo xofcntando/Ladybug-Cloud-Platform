@@ -1294,3 +1294,9 @@ body[data-page="/web"] { overflow: hidden; }
 .wa-app .wa-meta { z-index: 1; }
 .wa-app .wa-main { overflow: hidden; }
 .wa-app .wa-msg.wide::after { width: 124px; }
+
+.wa-app .wa-thumbwrap { position: relative; display: inline-block; cursor: pointer; margin-bottom: 4px; max-width: 100%; }
+.wa-app .wa-img.thumb { filter: blur(1.5px); width: 240px; max-width: 100%; height: auto; min-height: 90px; object-fit: cover; cursor: pointer; margin: 0; }
+.wa-app .wa-thumb-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); background: rgba(11,20,26,.72); color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; white-space: nowrap; }
+.wa-app .wa-thumb-badge.err { background: rgba(160,40,40,.85); }
+.wa-app .wa-thumb-err { display: block; margin-top: 3px; max-width: 240px; color: #ff9b9b; font-size: 12px; line-height: 1.3; }

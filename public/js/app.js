@@ -1578,6 +1578,10 @@ async function renderWebConsole() {
   function mediaHtml(m) {
     const got = MEDIA[m.id];
     const meta = m.media || {};
+    if (!got && m.thumb && ['image', 'video', 'sticker'].includes(m.type)) {
+      const state = m._loading ? 'Loading…' : m._err ? 'Tap to retry' : m.type === 'video' ? '▶ Tap to play' : 'Tap to open';
+      return `<div class="wa-thumbwrap" data-open="${esc(m.id)}"><img class="wa-img thumb" src="${m.thumb}" alt=""><span class="wa-thumb-badge ${m._err ? 'err' : ''}">${state}</span>${m._err ? `<small class="wa-thumb-err">${esc(m._err)}</small>` : ''}</div>`;
+    }
     if (m.type === 'sticker' && got) return `<img class="wa-img sticker" src="${got.data}" alt="">`;
     if (m.type === 'image' && got) return `<img class="wa-img" data-zoom="${esc(m.id)}" src="${got.data}" alt="photo">`;
     if (m.type === 'video' && got) return `<video class="wa-vid" src="${got.data}" controls preload="metadata"></video>`;
@@ -1586,17 +1590,24 @@ async function renderWebConsole() {
       return `<div class="wa-doc" data-open="${esc(m.id)}">${WAI2.doc}<div><b>${esc(meta.name || m.text || 'Document')}</b><small>${esc(fmtSize(meta.size))}${got ? ' · tap to save' : ' · tap to download'}</small></div></div>`;
     }
     const nice = { image: 'photo', video: 'video', audio: 'audio file', voice: 'voice message', sticker: 'sticker' }[m.type];
-    if (nice) return `<button class="wa-load" data-open="${esc(m.id)}">${icon[m.type]} Load ${nice}${meta.size ? ' (' + esc(fmtSize(meta.size)) + ')' : ''}</button>`;
+    if (nice) return `<button class="wa-load" data-open="${esc(m.id)}">${m._loading ? 'Loading…' : (m._err ? 'Retry: ' + esc(m._err) : icon[m.type] + ' Load ' + nice + (meta.size ? ' (' + esc(fmtSize(meta.size)) + ')' : ''))}</button>`;
     return `<span class="wa-media">${icon[m.type] || ''} ${esc(m.type)}</span>`;
   }
   const KNOWN_MEDIA = ['image', 'video', 'voice', 'audio', 'document', 'sticker'];
+  async function fetchMedia(m) {
+    m._loading = true; m._err = null; paintThread(false);
+    try { MEDIA[m.id] = await api(`${base}/media?jid=${encodeURIComponent(S.jid)}&id=${encodeURIComponent(m.id)}`); }
+    catch (e) { m._err = e.message || 'Could not load'; m._failed = true; }
+    m._loading = false;
+    paintThread(false);
+    return !!MEDIA[m.id];
+  }
   async function openMedia(id, { save } = {}) {
     const m = S.msgs.find((x) => x.id === id);
-    if (!m) return;
+    if (!m || m._loading) return;
     if (!MEDIA[id]) {
-      try { MEDIA[id] = await api(`${base}/media?jid=${encodeURIComponent(S.jid)}&id=${encodeURIComponent(id)}`); }
-      catch (e) { toast(e.message, 'err'); return; }
-      paintThread(false);
+      const ok = await fetchMedia(m);
+      if (!ok) return toast(m._err, 'err');
     }
     if (save || m.type === 'document') {
       const a = document.createElement('a');
@@ -1613,8 +1624,7 @@ async function renderWebConsole() {
       for (const m of S.msgs.slice(-40)) {
         if (!$('#waThread')) break;
         if ((m.type === 'image' || m.type === 'sticker') && !MEDIA[m.id] && !(m.media && m.media.size > 1.5 * 1048576) && !m._failed) {
-          try { MEDIA[m.id] = await api(`${base}/media?jid=${encodeURIComponent(S.jid)}&id=${encodeURIComponent(m.id)}`); paintThread(false); }
-          catch (e) { m._failed = true; }
+          await fetchMedia(m);
           await new Promise((r) => setTimeout(r, 300));
         }
       }
