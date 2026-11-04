@@ -1225,11 +1225,17 @@ async function renderWebConsole() {
       <div><h1>WhatsApp Web</h1><p>${esc(bot.name)} · read and reply as your bot number. Messages are shown live and never stored on the server.</p></div>
       <a class="btn" href="#/dashboard">Back to bots</a>
     </div>
+    <div class="wa-status" id="waStatus"><span class="wa-dot"></span><span>Checking connection…</span></div>
     <div class="wa-shell card" id="waShell">
       <aside class="wa-side">
         <div class="wa-tools">
           <input class="input" id="waSearch" placeholder="Search chats" />
           <button class="btn btn-sm btn-primary" id="waNew" title="Start a new chat">New</button>
+        </div>
+        <div class="wa-tabs" id="waTabs">
+          <button data-tab="all" class="on">All</button>
+          <button data-tab="online">Online <i id="waOnlineN">0</i></button>
+          <button data-tab="unread">Unread <i id="waUnreadN">0</i></button>
         </div>
         <div class="wa-list" id="waList"><div class="chat-empty">Loading…</div></div>
       </aside>
@@ -1247,25 +1253,147 @@ async function renderWebConsole() {
   </div></div>`;
 
   const base = `/api/bots/${bot.id}/web`;
-  const S = { chats: [], jid: null, msgs: [], replyTo: null, q: '' };
+  const S = { chats: [], jid: null, msgs: [], replyTo: null, q: '', tab: 'all', conn: null, me: null, wa: null, groupSize: null, typingOn: false };
+  const TYPING_TTL = 12000, ONLINE_TTL = 180000;
+  // Presence as it should look right now. Typing expires on its own and a silent 'online' goes stale.
+  function eff(c) {
+    const p = c.presence;
+    if (!p) return { state: 'unknown' };
+    const age = Date.now() - (c._pAt || 0);
+    let st = p.state;
+    if ((st === 'composing' || st === 'recording') && age > TYPING_TTL) st = 'available';
+    if (st === 'available' && age > ONLINE_TTL) st = 'unknown';
+    return { state: st, lastSeen: p.lastSeen };
+  }
+  const isOnline = (c) => ['available', 'composing', 'recording'].includes(eff(c).state);
+  function lastSeenText(ts) {
+    if (!ts) return 'offline';
+    const d = new Date(ts * 1000), n = new Date();
+    const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === n.toDateString()) return 'last seen today at ' + t;
+    const y = new Date(n); y.setDate(n.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'last seen yesterday at ' + t;
+    return 'last seen ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' at ' + t;
+  }
+  function presenceLine(c) {
+    if (!c) return '';
+    if (c.isGroup) return S.groupSize ? S.groupSize + ' participants' : 'group';
+    const e = eff(c);
+    if (e.state === 'composing') return 'typing…';
+    if (e.state === 'recording') return 'recording audio…';
+    if (e.state === 'available') return 'online';
+    if (e.state === 'unavailable') return lastSeenText(e.lastSeen);
+    return '';
+  }
+  const avatarHtml = (c, size) => {
+    const letter = esc((c.name || '?').replace(/^\+/, '').charAt(0).toUpperCase());
+    const img = c.avatar ? `<img src="${esc(c.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
+    const dot = !c.isGroup && isOnline(c) ? '<i class="wa-online-dot"></i>' : '';
+    return `<div class="wa-avatar ${size || ''}"><span>${letter}</span>${img}${dot}</div>`;
+  };
   const hhmm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dayLabel = (t) => { const d = new Date(t * 1000); const n = new Date(); return d.toDateString() === n.toDateString() ? hhmm(t) : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); };
   const tick = (m) => (m.fromMe ? `<span class="wa-tick ${m.status === 'read' ? 'read' : ''}">${m.status === 'delivered' || m.status === 'read' ? '✓✓' : '✓'}</span>` : '');
   const icon = { image: '🖼', video: '🎬', voice: '🎤', audio: '🎵', document: '📄', sticker: '✨', contact: '👤', location: '📍', poll: '📊' };
 
+  function paintStatus() {
+    const el = $('#waStatus');
+    if (!el) return;
+    const online = S.chats.filter((c) => !c.isGroup && isOnline(c)).length;
+    const unread = S.chats.reduce((n, c) => n + (c.unread ? 1 : 0), 0);
+    const on = $('#waOnlineN'), un = $('#waUnreadN');
+    if (on) on.textContent = online;
+    if (un) un.textContent = unread;
+    let cls = 'off', text = 'Checking connection…';
+    const wa = S.wa || {};
+    const cs = S.conn && S.conn.state;
+    const who = S.me ? '+' + String(S.me.id || '').split(':')[0].split('@')[0] + (S.me.name ? ' (' + S.me.name + ')' : '') : '';
+    if (S.stopped) { cls = 'off'; text = 'Bot is stopped. Start it from the dashboard to go online.'; }
+    else if (cs === 'open' || (!cs && wa.state === 'connected')) {
+      cls = 'on';
+      const since = (S.conn && S.conn.since) || wa.since;
+      text = `Connected${who ? ' as ' + esc(who) : ''}${since ? ' · linked ' + esc(ago(since)) : ''} · <b>${online}</b> contact${online === 1 ? '' : 's'} online`;
+    } else if (wa.state === 'logged_out') { cls = 'bad'; text = 'This number was logged out of WhatsApp. Link it again with a fresh session.'; }
+    else if (wa.state === 'conflict') { cls = 'warn'; text = 'Another device or server is using this session (conflict). Stop the other one so this bot can reconnect.'; }
+    else if (cs === 'closed' || wa.state === 'reconnecting') { cls = 'warn'; text = 'Connection to WhatsApp dropped. Reconnecting…'; }
+    else if (cs === 'connecting' || wa.state === 'connecting') { cls = 'warn'; text = 'Connecting to WhatsApp…'; }
+    el.className = 'wa-status ' + cls;
+    el.innerHTML = `<span class="wa-dot"></span><span>${text}</span>`;
+  }
+  function ago(ms) {
+    const m = Math.floor((Date.now() - ms) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + ' min ago';
+    const h = Math.floor(m / 60);
+    return h < 24 ? h + ' h ago' : Math.floor(h / 24) + ' d ago';
+  }
+
   function paintList() {
     const box = $('#waList');
     if (!box) return;
-    if (!S.chats.length) { box.innerHTML = '<div class="chat-empty">No chats yet. When someone messages this number it shows up here.</div>'; return; }
-    box.innerHTML = S.chats.map((c) => `
+    paintStatus();
+    let list = S.chats;
+    if (S.tab === 'online') list = list.filter((c) => !c.isGroup && isOnline(c));
+    if (S.tab === 'unread') list = list.filter((c) => c.unread);
+    if (S.tab === 'online') list = [...list].sort((a, b) => (eff(b).state === 'composing') - (eff(a).state === 'composing'));
+    if (!list.length) {
+      box.innerHTML = `<div class="chat-empty">${S.chats.length
+        ? (S.tab === 'online' ? 'Nobody is online right now. People show up here the moment WhatsApp reports them online or typing.' : 'No unread chats.')
+        : 'No chats yet. When someone messages this number it shows up here.'}</div>`;
+      return;
+    }
+    box.innerHTML = list.map((c) => {
+      const e = eff(c);
+      const typing = e.state === 'composing' || e.state === 'recording';
+      const last = typing
+        ? `<span class="wa-last wa-typing-txt">${e.state === 'composing' ? 'typing…' : 'recording audio…'}</span>`
+        : `<span class="wa-last">${c.lastFromMe ? 'You: ' : ''}${esc(c.lastText || '')}</span>`;
+      return `
       <div class="wa-chat ${c.jid === S.jid ? 'active' : ''}" data-jid="${esc(c.jid)}">
-        <div class="wa-avatar">${esc((c.name || '?').replace(/^\+/, '').charAt(0).toUpperCase())}</div>
+        ${avatarHtml(c)}
         <div class="wa-chat-body">
           <div class="wa-chat-row"><b>${esc(c.name)}${c.isGroup ? ' · group' : ''}</b><span>${c.lastTs ? dayLabel(c.lastTs) : ''}</span></div>
-          <div class="wa-chat-row"><span class="wa-last">${c.lastFromMe ? 'You: ' : ''}${esc(c.lastText || '')}</span>${c.unread ? `<i class="wa-badge">${c.unread}</i>` : ''}</div>
+          <div class="wa-chat-row">${last}${c.unread ? `<i class="wa-badge">${c.unread}</i>` : ''}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     box.querySelectorAll('[data-jid]').forEach((el) => { el.onclick = () => openChat(el.dataset.jid); });
+    queueAvatars(list);
+  }
+
+  // Profile pictures load one at a time so we never hammer WhatsApp.
+  const avatarSeen = new Set();
+  let avatarBusy = false;
+  const avatarQ = [];
+  function queueAvatars(list) {
+    for (const c of list.slice(0, 40)) if (!c.avatar && !avatarSeen.has(c.jid)) { avatarSeen.add(c.jid); avatarQ.push(c.jid); }
+    pumpAvatars();
+  }
+  async function pumpAvatars() {
+    if (avatarBusy) return;
+    avatarBusy = true;
+    while (avatarQ.length && $('#waList')) {
+      const jid = avatarQ.shift();
+      try {
+        const r = await api(`${base}/avatar?jid=${encodeURIComponent(jid)}`);
+        const c = S.chats.find((x) => x.jid === jid);
+        if (c && r.url) { c.avatar = r.url; paintListSoon(); }
+      } catch (e) { /* contact hides it, or bot offline */ }
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    avatarBusy = false;
+  }
+  let paintT = null;
+  function paintListSoon() { clearTimeout(paintT); paintT = setTimeout(() => { paintList(); paintTop(); }, 150); }
+
+  function paintTop() {
+    const c = S.chats.find((x) => x.jid === S.jid) || S.chat;
+    const top = $('#waTop');
+    if (!top || !c || !S.jid) return;
+    const line = presenceLine(c);
+    const live = !c.isGroup && isOnline(c);
+    top.innerHTML = `<button class="btn btn-sm btn-ghost wa-back" id="waBack">←</button>${avatarHtml(c)}<div class="wa-who-top"><b>${esc(c.name)}</b><span class="wa-presence ${live ? 'live' : ''} ${eff(c).state === 'composing' ? 'typing' : ''}">${esc(line || S.jid.split('@')[0])}</span></div>`;
+    $('#waBack').onclick = () => $('#waShell').classList.remove('chat-open');
   }
 
   function paintThread(stick) {
@@ -1301,9 +1429,17 @@ async function renderWebConsole() {
   async function loadChats() {
     try {
       const r = await api(`${base}/chats?q=${encodeURIComponent(S.q)}`);
-      S.chats = r.chats;
+      const old = new Map(S.chats.map((c) => [c.jid, c]));
+      S.chats = r.chats.map((c) => {
+        const o = old.get(c.jid);
+        if (c.presence) c._pAt = Date.now(); else if (o && o.presence) { c.presence = o.presence; c._pAt = o._pAt; }
+        if (!c.avatar && o && o.avatar) c.avatar = o.avatar;
+        return c;
+      });
+      S.conn = r.conn || S.conn; S.me = r.me || S.me; S.stopped = false;
       paintList();
     } catch (e) {
+      if (/not running/i.test(e.message)) { S.stopped = true; paintStatus(); }
       $('#waList').innerHTML = `<div class="chat-empty">${esc(e.message)}${/not running/i.test(e.message) ? '<br><a href="#/dashboard">Start the bot first</a>' : ''}</div>`;
     }
   }
@@ -1314,8 +1450,16 @@ async function renderWebConsole() {
     try {
       const r = await api(`${base}/messages?jid=${encodeURIComponent(jid)}&limit=100`);
       S.msgs = r.messages; S.chat = r.chat;
-      $('#waTop').innerHTML = `<button class="btn btn-sm btn-ghost wa-back" id="waBack">←</button><div class="wa-avatar">${esc((r.chat.name || '?').replace(/^\+/, '').charAt(0).toUpperCase())}</div><b>${esc(r.chat.name)}</b><span class="hint">${esc(jid.split('@')[0])}</span>`;
-      $('#waBack').onclick = () => $('#waShell').classList.remove('chat-open');
+      S.groupSize = null;
+      const known = S.chats.find((x) => x.jid === jid);
+      if (known && r.chat && r.chat.presence && !known.presence) { known.presence = r.chat.presence; known._pAt = Date.now(); }
+      paintTop();
+      api(`${base}/presence?jid=${encodeURIComponent(jid)}`).then((p) => {
+        if (S.jid !== jid) return;
+        if (p.group) S.groupSize = p.size;
+        else if (p.presence && known && p.presence.state !== 'unknown') { known.presence = p.presence; known._pAt = Date.now(); }
+        paintTop(); paintList();
+      }).catch(() => {});
       $('#waForm').hidden = false;
       paintThread(true);
       const c = S.chats.find((x) => x.jid === jid);
@@ -1338,6 +1482,30 @@ async function renderWebConsole() {
   };
   $('#waText').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#waForm').requestSubmit(); } };
 
+  document.querySelectorAll('#waTabs [data-tab]').forEach((b) => {
+    b.onclick = () => {
+      S.tab = b.dataset.tab;
+      document.querySelectorAll('#waTabs [data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+      paintList();
+    };
+  });
+
+  // Let the other person see "typing..." while you write, and stop when you pause.
+  let typingStop = null;
+  $('#waText').addEventListener('input', () => {
+    if (!S.jid) return;
+    const jid = S.jid;
+    if (!S.typingOn) { S.typingOn = true; api(base + '/typing', { method: 'POST', body: { jid, on: true } }).catch(() => {}); }
+    clearTimeout(typingStop);
+    typingStop = setTimeout(() => { S.typingOn = false; api(base + '/typing', { method: 'POST', body: { jid, on: false } }).catch(() => {}); }, 4000);
+  });
+
+  // Typing and 'online' expire on their own, so repaint now and then.
+  const repaintTimer = setInterval(() => {
+    if (!$('#waList')) return clearInterval(repaintTimer);
+    paintList(); paintTop();
+  }, 10000);
+
   let searchT = null;
   $('#waSearch').oninput = (e) => { clearTimeout(searchT); searchT = setTimeout(() => { S.q = e.target.value.trim(); loadChats(); }, 250); };
 
@@ -1359,7 +1527,10 @@ async function renderWebConsole() {
   webES.addEventListener('message', (ev) => {
     const d = JSON.parse(ev.data);
     const i = S.chats.findIndex((c) => c.jid === d.jid);
+    const prev = i >= 0 ? S.chats[i] : null;
     const chat = { ...d.chat };
+    if (prev) { if (!chat.avatar) chat.avatar = prev.avatar; if (!chat.presence || chat.presence.state === 'unknown') { chat.presence = prev.presence; chat._pAt = prev._pAt; } }
+    if (chat.presence && !chat._pAt) chat._pAt = Date.now();
     if (d.jid === S.jid) {
       if (!S.msgs.some((m) => m.id === d.entry.id)) S.msgs.push(d.entry);
       paintThread(d.entry.fromMe);
@@ -1374,9 +1545,42 @@ async function renderWebConsole() {
     const m = S.msgs.find((x) => x.id === d.id);
     if (m) { m.status = d.status; if (d.jid === S.jid) paintThread(false); }
   });
+  webES.addEventListener('presence', (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.group) return;
+    let c = S.chats.find((x) => x.jid === d.jid);
+    if (!c) { const n = String(d.jid).split('@')[0]; c = S.chats.find((x) => String(x.jid).split('@')[0] === n); }
+    if (!c) return;
+    c.presence = d.presence; c._pAt = Date.now();
+    paintList();
+    if (c.jid === S.jid) paintTop();
+    if (d.presence && d.presence.state === 'composing' && c.jid !== S.jid) { /* shown in the list as "typing…" */ }
+  });
+  webES.addEventListener('avatar', (ev) => {
+    const d = JSON.parse(ev.data);
+    const c = S.chats.find((x) => x.jid === d.jid);
+    if (c) { c.avatar = d.url; paintListSoon(); }
+  });
+  webES.addEventListener('connection', (ev) => {
+    const d = JSON.parse(ev.data);
+    S.conn = d; if (d.me) S.me = d.me; S.stopped = false;
+    paintStatus();
+    if (d.state === 'open') loadChats();
+  });
+  webES.addEventListener('hello', (ev) => {
+    const d = JSON.parse(ev.data);
+    S.wa = d.wa || null; S.stopped = !d.running;
+    api(base + '/info').then((i) => { S.conn = i.conn || S.conn; S.me = i.me || S.me; S.wa = i.wa || S.wa; S.stopped = !i.running; paintStatus(); }).catch(() => {});
+    paintStatus();
+  });
   webES.addEventListener('bot', (ev) => {
     const d = JSON.parse(ev.data);
+    if (d.wa) S.wa = d.wa;
+    if (d.type === 'stopped' || d.type === 'crashed') { S.stopped = true; S.conn = null; }
+    if (d.type === 'started' || d.type === 'online') S.stopped = false;
+    paintStatus();
     if (d.type === 'stopped' || d.type === 'crashed' || d.type === 'logged_out') toast('The bot went offline', 'err');
+    if (d.type === 'conflict') toast('WhatsApp session conflict: another device is using this session', 'err');
   });
 }
 

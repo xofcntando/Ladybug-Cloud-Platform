@@ -268,34 +268,9 @@ async function startBotInner() {
   const sessionFolder = `./${config.sessionName}`;
   const sessionFile = path.join(sessionFolder, 'creds.json');
 
-  // Check if sessionID is provided and process Ladybug! format session
-  // (KnightBot! is still accepted for backward compatibility)
-  if (config.sessionID && (config.sessionID.startsWith('Ladybug!') || config.sessionID.startsWith('KnightBot!'))) {
-    try {
-      const [header, b64data] = config.sessionID.split('!');
-
-      if ((header !== 'Ladybug' && header !== 'KnightBot') || !b64data) {
-        throw new Error("❌ Invalid session format. Expected 'Ladybug!.....'");
-      }
-
-      const cleanB64 = b64data.replace('...', '');
-      const compressedData = Buffer.from(cleanB64, 'base64');
-      const decompressedData = zlib.gunzipSync(compressedData);
-
-      // Ensure session folder exists
-      if (!fs.existsSync(sessionFolder)) {
-        fs.mkdirSync(sessionFolder, { recursive: true });
-      }
-
-      // Write decompressed session data to creds.json
-      fs.writeFileSync(sessionFile, decompressedData, 'utf8');
-      console.log('📡 Session : 🔑 Retrieved from Ladybug Session');
-
-    } catch (e) {
-      console.error('📡 Session : ❌ Error processing Ladybug session:', e.message);
-      // Continue with normal QR flow if session processing fails
-    }
-  }
+  // Seed the session folder from SESSION_ID once, never overwriting live credentials.
+  // (logic lives in utils/sessionSeed.js, copied from the platform's lib/bot-shims)
+  require('./utils/sessionSeed').seed({ sessionID: config.sessionID, sessionFolder });
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
   const { version } = await fetchLatestBaileysVersion();
@@ -334,8 +309,20 @@ async function startBotInner() {
   const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
   // Update on every message
-  sock.ev.on('messages.upsert', () => {
+  let undecryptable = 0;
+  sock.ev.on('messages.upsert', ({ messages, type }) => {
     lastActivity = Date.now();
+    // A message with no body and a ciphertext stub means WhatsApp delivered it but our keys
+    // could not open it. That is the classic "bot is online but ignores commands" symptom,
+    // so say it out loud instead of failing silently.
+    for (const m of messages || []) {
+      if (type === 'notify' && !m.key?.fromMe && !m.message && m.messageStubType === 2) {
+        undecryptable += 1;
+        if (undecryptable === 1 || undecryptable % 10 === 0) {
+          console.log(`⚠️ Could not decrypt ${undecryptable} incoming message(s) - the session keys are out of sync. If commands are ignored, re-link this number with a fresh session.`);
+        }
+      }
+    }
   });
 
   // Check every 5 min

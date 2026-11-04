@@ -21,6 +21,14 @@ const contacts = new Map(); // jid -> name
 let sock = null;
 let wired = false;
 
+// ---- presence ("who is online"): live state per chat, WhatsApp-Web style
+const presences = new Map(); // key -> { state, lastSeen, ts }
+const subscribed = new Set(); // chats we asked WhatsApp to tell us about, per socket
+const avatars = new Map(); // jid -> { url, ts }
+const conn = { state: 'connecting', since: Date.now(), number: null, name: null };
+const PRESENCE_TTL = 3 * 60 * 1000; // 'available' with no news for 3 minutes is shown as stale
+const TYPING_TTL = 12 * 1000; // WhatsApp sends 'paused' unreliably, so typing expires by itself
+
 const isGroup = (jid) => String(jid).endsWith('@g.us');
 const okJid = (jid) => /^[0-9A-Za-z._:-]+@(s\.whatsapp\.net|g\.us|lid)$/.test(String(jid || ''));
 const num = (jid) => String(jid || '').split('@')[0].split(':')[0];
@@ -58,8 +66,19 @@ function label(d) {
   return t ? (d.text ? `${t}: ${d.text}` : t) : d.text;
 }
 
+const presKey = (jid) => num(jid);
+function presenceOf(jid) {
+  const p = presences.get(presKey(jid));
+  if (!p) return null;
+  const age = Date.now() - p.ts;
+  let state = p.state;
+  if ((state === 'composing' || state === 'recording') && age > TYPING_TTL) state = 'available';
+  if (state === 'available' && age > PRESENCE_TTL) state = 'unknown';
+  return { state, lastSeen: p.lastSeen || null, who: p.who || null };
+}
+
 function chatView(c) {
-  return { jid: c.jid, name: c.name || contacts.get(c.jid) || (isGroup(c.jid) ? 'Group' : '+' + num(c.jid)), isGroup: isGroup(c.jid), unread: c.unread || 0, lastTs: c.lastTs || 0, lastText: c.lastText || '', lastFromMe: !!c.lastFromMe };
+  return { presence: isGroup(c.jid) ? null : presenceOf(c.jid), avatar: (avatars.get(c.jid) || {}).url || null, jid: c.jid, name: c.name || contacts.get(c.jid) || (isGroup(c.jid) ? 'Group' : '+' + num(c.jid)), isGroup: isGroup(c.jid), unread: c.unread || 0, lastTs: c.lastTs || 0, lastText: c.lastText || '', lastFromMe: !!c.lastFromMe };
 }
 
 function ensureChat(jid) {
@@ -104,11 +123,67 @@ function ingest(m, live) {
 
 function emit(event, data) { try { process.send({ type: 'wa', event, ...data }); } catch (e) { /* parent gone */ } }
 
+function setConn(patch) {
+  Object.assign(conn, patch);
+  emit('connection', { ...conn, me: sock && sock.user ? { id: sock.user.id, name: sock.user.name || null } : null });
+}
+
+/** Ask WhatsApp to push presence for a chat. Same call WhatsApp Web makes when you open a chat. */
+async function subscribe(jid) {
+  if (!sock || !okJid(jid) || subscribed.has(jid) || isGroup(jid)) return;
+  subscribed.add(jid);
+  try { await sock.presenceSubscribe(jid); } catch (e) { subscribed.delete(jid); }
+}
+
+// Gentle background subscription for the most recent DMs: one per 1.5 s, never more than 40.
+let subTimer = null;
+function subscribeRecent() {
+  clearInterval(subTimer);
+  const queue = [...chats.values()].filter((c) => !isGroup(c.jid)).sort((a, b) => b.lastTs - a.lastTs).slice(0, 40).map((c) => c.jid);
+  subTimer = setInterval(() => {
+    const jid = queue.shift();
+    if (!jid) return clearInterval(subTimer);
+    subscribe(jid);
+  }, 1500);
+  if (subTimer.unref) subTimer.unref();
+}
+
 function wire(s) {
+  subscribed.clear();
+  s.ev.on('connection.update', ({ connection }) => {
+    if (s !== sock) return;
+    if (connection === 'open') {
+      setConn({ state: 'open', since: Date.now(), number: s.user ? num(s.user.id) : null, name: s.user ? s.user.name || null : null });
+      setTimeout(subscribeRecent, 4000);
+    } else if (connection === 'connecting') setConn({ state: 'connecting', since: Date.now() });
+    else if (connection === 'close') setConn({ state: 'closed', since: Date.now() });
+  });
+  s.ev.on('presence.update', ({ id, presences: map }) => {
+    for (const [who, p] of Object.entries(map || {})) {
+      const state = p.lastKnownPresence || 'unavailable';
+      const lastSeen = p.lastSeen ? tsOf(p.lastSeen) : null;
+      if (isGroup(id)) {
+        emit('presence', { jid: id, group: true, who: num(who), state });
+        continue;
+      }
+      const prev = presences.get(presKey(id));
+      presences.set(presKey(id), { state, lastSeen: lastSeen || (state === 'unavailable' ? Math.floor(Date.now() / 1000) : prev && prev.lastSeen) || null, ts: Date.now() });
+      emit('presence', { jid: id, presence: presenceOf(id) });
+    }
+  });
   s.ev.on('messages.upsert', ({ messages, type }) => {
     for (const m of messages || []) {
       const r = ingest(m, type === 'notify');
-      if (r) emit('message', r);
+      if (r) {
+        emit('message', r);
+        if (type === 'notify' && !m.key.fromMe && !isGroup(r.jid)) {
+          // they just wrote to us, so they are online right now; also start following their presence
+          const prev = presences.get(presKey(r.jid));
+          if (!prev || (prev.state !== 'composing' && prev.state !== 'recording')) presences.set(presKey(r.jid), { state: 'available', lastSeen: prev && prev.lastSeen, ts: Date.now() });
+          emit('presence', { jid: r.jid, presence: presenceOf(r.jid) });
+          subscribe(r.jid);
+        }
+      }
     }
   });
   s.ev.on('messaging-history.set', ({ chats: cs, contacts: ct, messages: ms }) => {
@@ -152,7 +227,42 @@ const handlers = {
     let list = [...chats.values()].filter((c) => c.lastTs || msgs.has(c.jid)).map(chatView);
     if (needle) list = list.filter((c) => c.name.toLowerCase().includes(needle) || num(c.jid).includes(needle));
     list.sort((a, b) => b.lastTs - a.lastTs);
-    return { chats: list.slice(0, Math.min(300, Math.max(1, limit))), me: sock && sock.user ? { id: sock.user.id, name: sock.user.name || null } : null };
+    const online = list.filter((c) => c.presence && (c.presence.state === 'available' || c.presence.state === 'composing' || c.presence.state === 'recording')).length;
+    return { chats: list.slice(0, Math.min(300, Math.max(1, limit))), online, conn: { ...conn }, me: sock && sock.user ? { id: sock.user.id, name: sock.user.name || null } : null };
+  },
+  /** Connection + identity of the linked number, for the status bar. */
+  info() {
+    return { conn: { ...conn }, me: sock && sock.user ? { id: sock.user.id, name: sock.user.name || null } : null };
+  },
+  /** Subscribe to a chat's presence and return what we know right now. */
+  async presence({ jid } = {}) {
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    await subscribe(jid);
+    if (isGroup(jid)) {
+      let size = null;
+      try { const md = sock && (await sock.groupMetadata(jid)); size = md && md.participants ? md.participants.length : null; } catch (e) { /* optional */ }
+      return { group: true, size };
+    }
+    return { presence: presenceOf(jid) };
+  },
+  /** "typing..." indicator while the operator writes a reply. */
+  async typing({ jid, on } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    await sock.sendPresenceUpdate(on ? 'composing' : 'paused', jid);
+    return { ok: true };
+  },
+  /** Profile picture URL (cached for 30 minutes; WhatsApp only returns it if the contact allows it). */
+  async avatar({ jid } = {}) {
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const hit = avatars.get(jid);
+    if (hit && Date.now() - hit.ts < 30 * 60 * 1000) return { url: hit.url };
+    let url = null;
+    try { url = sock ? (await sock.profilePictureUrl(jid, 'preview')) || null : null; } catch (e) { url = null; }
+    avatars.set(jid, { url, ts: Date.now() });
+    const c = chats.get(jid);
+    if (c && url) emit('avatar', { jid, url });
+    return { url };
   },
   messages({ jid, limit = 50, before = 0 } = {}) {
     if (!okJid(jid)) throw new Error('Invalid chat id');
