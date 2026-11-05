@@ -315,6 +315,15 @@ The Developers page (`#/developers`) has the full guide, including a "Avoid What
 - **Advanced behaviour**: `X-Request-Id` on every response, uniform errors `{error, code, requestId}`, `Idempotency-Key` on POST (10 min replay), pagination/filtering on `GET /bots` (`status`, `q`, `limit`, `offset`), log filters (`since`, `stream`, `q`) with a `cursor`, and batch control `POST /bots/actions`.
 - The installer re-applies the one-line `handler.js` hook and copies `lib/bot-shims/customCommands.js` after any bot update, like the premium gate.
 
+### Status, media gallery, chat labels and contacts
+
+- **Status (stories)**: the circle button in the left rail. Shows what your contacts posted in the last 24 hours (text, photo, video) in a full-screen viewer (tap or arrow keys to step, Space pauses, Esc closes) and marks them viewed, subject to your own read-receipts privacy setting. **Add** posts a text status (8 colours, 8 fonts), or a photo / MP4 (max 8 MB) with a caption, to all known contacts or only the ones you tick. Delete your own status from the viewer. Posting is limited to 10 an hour per number. Statuses live in the bot's memory only and expire after 24 h.
+- **Media, docs and links**: the picture button in the chat header (also in the chat menu and the info drawer). Photos and videos in a grid by month, documents and audio as a list, links with previews. It is built from the messages the bot has seen (last 200 per chat), so it grows while the bot stays online. Opening a file downloads it on demand (8 MB limit).
+- **Chat labels**: the tag button in the rail, or **Labels...** in a chat's menu. Up to 20 coloured labels, 6 per chat. Labels show as chips on the chat list and as a filter bar (including "No label"). They are saved on the platform per linked number (not in the browser), so they follow you across devices and survive redeploys when `MONGODB_URI` is set. They are local to the console: they are not WhatsApp Business labels on the phone.
+- **Contacts**: the address-book button in the rail, and the **New chat** button. Search contacts, type any number to chat, and **New contact** (name + number, checked against WhatsApp first). Names are saved on the platform and also pushed to the phone's address book when WhatsApp accepts the sync. Edit or remove saved contacts; "Save to contacts" also appears in a chat's info drawer.
+
+API (all under `/api/bots/:id/web`): `GET status`, `GET status/media?id=`, `POST status/seen {ids}`, `POST status/post {kind:'text'|'media', text, bg, font, data, caption, audience?}`, `POST status/delete {id}`, `GET gallery?jid=&kind=media|docs|links`, `GET|POST contacts {phone, name}`, `POST contacts/remove {jid}`, `GET|POST labels`, `PUT|DELETE labels/:labelId`, `POST labels/assign {jid, labelId, on}`.
+
 ---
 
 ## Pairing, linked devices & WhatsApp Web console

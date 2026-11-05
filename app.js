@@ -50,7 +50,7 @@ app.use(securityHeaders);
 app.use(compression());
 const jsonSmall = express.json({ limit: '2mb' });
 const jsonBig = express.json({ limit: '13mb' }); // photos / files sent from the WhatsApp client (8 MB file = ~11 MB as base64)
-app.use((req, res, next) => (/\/web\/(sendmedia|sendvoice)$/.test(req.path) ? jsonBig : jsonSmall)(req, res, next));
+app.use((req, res, next) => (/\/web\/(sendmedia|sendvoice|status\/post)$/.test(req.path) ? jsonBig : jsonSmall)(req, res, next));
 app.use(express.urlencoded({ extended: true }));
 // Login sessions never expire: they are stored on disk (survive restarts and
 // redeploys), the signing secret is stable, and the cookie lasts ~10 years and
@@ -870,6 +870,7 @@ function deleteBotFor(bot) {
   bots.stop(bot.id);
   db.deleteBot(bot.id);
   try { require('./lib/customcommands').purge(bot.id); } catch (e) { /* ignore */ }
+  try { require('./lib/wa-book').purge(bot.id); } catch (e) { /* ignore */ }
   return { code: 200, body: { ok: true } };
 }
 
@@ -1160,6 +1161,22 @@ app.post('/api/bots/:id/web/block', requireAuth, (req, res) => { const b = ownBo
 app.post('/api/bots/:id/web/disappearing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.disappearing(b, req, res); });
 app.post('/api/bots/:id/web/sendvoice', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendVoice(b, req, res); });
 app.get('/api/bots/:id/web/search', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.search(b, req, res); });
+// status (stories), gallery, contacts, labels
+const ownWeb = (fn) => (req, res) => { const b = ownBot(req, res); if (b) webconsole[fn](b, req, res); };
+app.get('/api/bots/:id/web/status', requireAuth, ownWeb('statusList'));
+app.get('/api/bots/:id/web/status/media', requireAuth, ownWeb('statusMedia'));
+app.post('/api/bots/:id/web/status/seen', requireAuth, ownWeb('statusSeen'));
+app.post('/api/bots/:id/web/status/post', requireAuth, ownWeb('statusPost'));
+app.post('/api/bots/:id/web/status/delete', requireAuth, ownWeb('statusDelete'));
+app.get('/api/bots/:id/web/gallery', requireAuth, ownWeb('gallery'));
+app.get('/api/bots/:id/web/contacts', requireAuth, ownWeb('contacts'));
+app.post('/api/bots/:id/web/contacts', requireAuth, ownWeb('contactAdd'));
+app.post('/api/bots/:id/web/contacts/remove', requireAuth, ownWeb('contactRemove'));
+app.get('/api/bots/:id/web/labels', requireAuth, ownWeb('labels'));
+app.post('/api/bots/:id/web/labels', requireAuth, ownWeb('labelCreate'));
+app.post('/api/bots/:id/web/labels/assign', requireAuth, ownWeb('labelAssign'));
+app.put('/api/bots/:id/web/labels/:labelId', requireAuth, ownWeb('labelUpdate'));
+app.delete('/api/bots/:id/web/labels/:labelId', requireAuth, ownWeb('labelDelete'));
 app.get('/api/bots/:id/web/media', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.media(b, req, res); });
 app.post('/api/bots/:id/web/sendmedia', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendMedia(b, req, res); });
 app.post('/api/bots/:id/web/sendpoll', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.rich('sendPoll', ['jid', 'name', 'options', 'multi'])(b, req, res); });
