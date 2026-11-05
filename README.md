@@ -87,7 +87,7 @@ Open any running bot and press **Web** to get a full browser client for the bot'
 | **Export** | Right-click a chat, then **Export chat (.txt)**. |
 | **Shortcuts** | Press `?` for the list (Alt+Up/Down switches chats, Ctrl+, opens appearance). |
 
-The logo lives in `public/img/wa-logo.svg` (PNG sizes next to it). Messages are still held in memory only and never written to disk.
+The logo lives in `public/img/wa-logo.svg` (PNG sizes next to it). Chats and messages are saved (see **Saved message history** below).
 New endpoints: `POST /api/bots/:id/web/sendvoice`, `GET /api/bots/:id/web/search`, and `mentions` on `POST /web/send`.
 
 ### Link up to 12 WhatsApp numbers from the web client
@@ -341,7 +341,7 @@ API (all under `/api/bots/:id/web`): `GET status`, `GET status/media?id=`, `POST
 
 - **Pairing fix**: WhatsApp closes the stream with "restart required" (515) right after the code is accepted; the pairing worker now reconnects on the saved credentials so the link completes (it used to stall until the timeout). Pairing codes are always `MRNTANDO` (override with `PAIRING_CODE`, exactly 8 letters/digits). The code still has to be typed into WhatsApp > Linked devices by the phone's owner: it cannot link a number on its own.
 - **Linked devices**: every number a user pairs, adds to a bot, or deletes with a bot is saved to their account. Restore it onto a new or existing stopped bot without pairing again (dashboard: Create/Edit bot > "Restore a previously linked device"; API: `GET /devices`, `POST /devices/:id/restore {name | botId}`). Devices WhatsApp logged out are flagged and need a fresh pairing. Pairing jobs are only readable by the user who started them.
-- **WhatsApp Web console**: the "WhatsApp Web" button on a bot (`#/web?bot=ID`) shows chats, conversations, live incoming messages, replies, reactions and read receipts, and can start a chat with any number. API: `/api/v1/bots/:id/web/{chats,messages,send,read,lookup,stream}`. It talks to the bot over the child-process IPC channel (`lib/bot-shims/webBridge.js`, hooked into `index.js` by the installer), keeps messages in memory only, and limits sending to 20 messages a minute per bot.
+- **WhatsApp Web console**: the "WhatsApp Web" button on a bot (`#/web?bot=ID`) shows chats, conversations, live incoming messages, replies, reactions and read receipts, and can start a chat with any number. API: `/api/v1/bots/:id/web/{chats,messages,send,read,lookup,stream}`. It talks to the bot over the child-process IPC channel (`lib/bot-shims/webBridge.js`, hooked into `index.js` by the installer), saves chats and messages to disk (see **Saved message history**), and limits sending to 20 messages a minute per bot.
 
 ## 💬 WhatsApp - by Ntandomods (web client)
 
@@ -370,3 +370,14 @@ Changes are limited to 8 a minute per bot. The same actions exist in the API und
 - **Notifications**: message sound and desktop notifications (Profile -> Notifications), unread count in the browser tab title.
 
 New API routes: `GET /bots/{id}/web/media | group`, `POST /bots/{id}/web/delete | edit`.
+
+
+## 💾 Saved message history (WhatsApp Web console)
+
+Chats and messages no longer vanish when you close the app or the bot restarts.
+
+- The bot saves a snapshot (last 150 messages per chat, up to 300 chats, contacts, deleted-message log) to `data_<botId>/webchat.json` a few seconds after anything changes, and again on shutdown. It is reloaded automatically on start.
+- While the bot is **offline**, the console still lists chats and shows the saved conversations (read-only, with a banner). Sending needs the bot online.
+- With `MONGODB_URI` set, each snapshot is gzipped and mirrored to the `wachats` collection (at most once a minute per bot) and restored on boot when the disk is empty (Render free plan). Deleting a bot deletes its saved history.
+- Not saved: media files (only captions, metadata and small previews), so old photos/videos cannot be re-downloaded after a restart; contact statuses (they expire after 24 h anyway).
+- Code: `lib/bot-shims/webBridge.js` (persistence), `lib/chat-archive.js` (offline reads + MongoDB mirror).

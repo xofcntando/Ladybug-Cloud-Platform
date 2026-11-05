@@ -1410,7 +1410,7 @@ async function renderWebConsole() {
     const wa = S.wa || {};
     const cs = S.conn && S.conn.state;
     const who = S.me ? '+' + String(S.me.id || '').split(':')[0].split('@')[0] + (S.me.name ? ' (' + S.me.name + ')' : '') : '';
-    if (S.stopped) { cls = 'off'; text = 'Bot is stopped. Start it from the dashboard to go online.'; }
+    if (S.stopped) { cls = 'off'; text = 'Bot is offline. Showing your saved messages. Start the bot from the dashboard to go online.'; }
     else if (cs === 'open' || (!cs && wa.state === 'connected')) {
       cls = 'on';
       const since = (S.conn && S.conn.since) || wa.since;
@@ -1770,8 +1770,9 @@ async function renderWebConsole() {
         if (!c.avatar && o && o.avatar) c.avatar = o.avatar;
         return c;
       });
-      S.conn = r.conn || S.conn; S.me = r.me || S.me; S.stopped = false;
+      S.conn = r.conn || S.conn; S.me = r.me || S.me; S.stopped = !!r.offline;
       paintList();
+      if (r.offline) paintStatus();
     } catch (e) {
       if (/not running/i.test(e.message)) { S.stopped = true; paintStatus(); }
       $('#waList').innerHTML = `<div class="chat-empty">${esc(e.message)}${/not running/i.test(e.message) ? '<br><a href="#/dashboard">Start the bot first</a>' : ''}</div>`;

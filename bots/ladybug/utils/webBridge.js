@@ -281,7 +281,7 @@ function applyProtocol(m) {
   } catch (err) { return false; }
 }
 
-function emit(event, data) { try { process.send({ type: 'wa', event, ...data }); } catch (e) { /* parent gone */ } }
+function emit(event, data) { if (event !== 'presence' && event !== 'connection' && event !== 'avatar' && event !== 'typing') persistDirty = true; try { process.send({ type: 'wa', event, ...data }); } catch (e) { /* parent gone */ } }
 
 function setConn(patch) {
   Object.assign(conn, patch);
@@ -608,9 +608,157 @@ function wire(s) {
   });
 }
 
+/* ---------------------------------------------------------------------------------------------
+   Persistence: the chat list and message history survive restarts, redeploys and "closing the app".
+   Snapshot -> $BOT_DATA_DIR/webchat.json (atomic write). The platform mirrors that file to MongoDB
+   (when MONGODB_URI is set) and can serve it while the bot is offline. Media bytes are NOT stored
+   (only captions, metadata and small previews), so old media cannot be re-downloaded after a restart.
+--------------------------------------------------------------------------------------------- */
+const fs = require('fs');
+const path = require('path');
+const PERSIST_FILE = path.join(process.env.BOT_DATA_DIR || path.join(__dirname, '..', 'database'), 'webchat.json');
+const PERSIST_PER_CHAT = 150; // newest messages kept per chat on disk
+const PERSIST_THUMBS = 20; // previews kept for the newest N messages of a chat
+const PERSIST_MAX_BYTES = 12 * 1024 * 1024; // keeps the MongoDB mirror well under its 16 MB document limit (gzip shrinks it further)
+const PERSIST_EVERY_MS = 8000;
+let persistDirty = false;
+let persistBusy = false;
+let persistSig = '';
+let lastSaveAt = 0;
+
+function markDirty() { persistDirty = true; }
+
+function snapshotSig() {
+  let n = 0, last = 0, unread = 0;
+  for (const l of msgs.values()) n += l.length;
+  for (const c of chats.values()) { last += c.lastTs || 0; unread += c.unread || 0; }
+  return [chats.size, n, last, unread, contacts.size, saved.size, deletedLog.length].join('|');
+}
+
+function buildSnapshot() {
+  const out = {};
+  for (const [jid, list] of msgs) {
+    const keep = list.slice(-PERSIST_PER_CHAT);
+    out[jid] = keep.map((m, i) => {
+      if (m.thumb && i < keep.length - PERSIST_THUMBS) { const { thumb, ...rest } = m; return rest; }
+      return m;
+    });
+  }
+  let snap = { v: 1, savedAt: Date.now(), chats: [...chats.values()], msgs: out, contacts: Object.fromEntries(contacts), saved: Object.fromEntries(saved), deleted: deletedLog.slice(-DELETED_MAX) };
+  let json = JSON.stringify(snap);
+  if (json.length > PERSIST_MAX_BYTES) { // too big: drop previews first, then the oldest chats' history
+    for (const l of Object.values(out)) for (const m of l) delete m.thumb;
+    json = JSON.stringify(snap);
+    const order = [...chats.values()].sort((a, b) => (a.lastTs || 0) - (b.lastTs || 0));
+    for (const c of order) {
+      if (json.length <= PERSIST_MAX_BYTES) break;
+      delete out[c.jid];
+      json = JSON.stringify(snap);
+    }
+  }
+  return json;
+}
+
+function writeSnapshotSync(json) {
+  fs.mkdirSync(path.dirname(PERSIST_FILE), { recursive: true });
+  const tmp = PERSIST_FILE + '.tmp';
+  fs.writeFileSync(tmp, json);
+  fs.renameSync(tmp, PERSIST_FILE);
+}
+
+function saveNow(sync) {
+  if (!enabled || (!persistDirty && !sync) || persistBusy) return;
+  try {
+    persistBusy = true;
+    const json = buildSnapshot();
+    persistDirty = false;
+    if (sync) { writeSnapshotSync(json); persistBusy = false; lastSaveAt = Date.now(); return; }
+    fs.mkdir(path.dirname(PERSIST_FILE), { recursive: true }, () => {
+      const tmp = PERSIST_FILE + '.tmp';
+      fs.writeFile(tmp, json, (err) => {
+        if (err) { persistDirty = true; persistBusy = false; return; }
+        fs.rename(tmp, PERSIST_FILE, (err2) => {
+          persistBusy = false;
+          if (err2) { persistDirty = true; return; }
+          lastSaveAt = Date.now();
+          try { process.send({ type: 'wa-saved', at: lastSaveAt }); } catch (e) { /* parent gone */ }
+        });
+      });
+    });
+  } catch (e) { persistBusy = false; persistDirty = true; }
+}
+
+/** Merge a snapshot into memory. Messages are matched by id, so loading twice (disk + MongoDB) is harmless. */
+function applySnapshot(snap) {
+  if (!snap || typeof snap !== 'object') return 0;
+  let added = 0;
+  for (const [id, name] of Object.entries(snap.contacts || {})) if (okJid(id) && name && !contacts.has(id)) contacts.set(id, String(name).slice(0, 80));
+  for (const [id, name] of Object.entries(snap.saved || {})) if (okJid(id) && name && !saved.has(id)) saved.set(id, String(name).slice(0, 80));
+  for (const c of snap.chats || []) {
+    if (!c || !okJid(c.jid)) continue;
+    const x = chats.get(c.jid);
+    if (!x) chats.set(c.jid, { jid: c.jid, name: c.name || null, unread: c.unread || 0, lastTs: c.lastTs || 0, lastText: c.lastText || '', lastFromMe: !!c.lastFromMe });
+    else {
+      if (!x.name && c.name) x.name = c.name;
+      if ((c.lastTs || 0) > (x.lastTs || 0)) { x.lastTs = c.lastTs; x.lastText = c.lastText || ''; x.lastFromMe = !!c.lastFromMe; }
+    }
+  }
+  for (const [jid, list] of Object.entries(snap.msgs || {})) {
+    if (!okJid(jid) || !Array.isArray(list)) continue;
+    const have = msgs.get(jid) || [];
+    const ids = new Set(have.map((m) => m.id));
+    for (const m of list) { if (m && m.id && !ids.has(m.id)) { have.push(m); ids.add(m.id); added++; } }
+    have.sort((a, b) => a.ts - b.ts);
+    if (have.length > MAX_PER_CHAT) have.splice(0, have.length - MAX_PER_CHAT);
+    if (have.length) msgs.set(jid, have);
+    if (!chats.has(jid)) { const l = have[have.length - 1]; chats.set(jid, { jid, name: contacts.get(jid) || null, unread: 0, lastTs: l ? l.ts : 0, lastText: l ? String(l.text || l.type || '').slice(0, 120) : '', lastFromMe: l ? !!l.fromMe : false }); }
+  }
+  const seen = new Set(deletedLog.map((d) => d.jid + ':' + d.id));
+  for (const d of snap.deleted || []) if (d && d.id && !seen.has(d.jid + ':' + d.id)) deletedLog.push(d);
+  deletedLog.sort((a, b) => (a.deletedAt || 0) - (b.deletedAt || 0));
+  if (deletedLog.length > DELETED_MAX) deletedLog.splice(0, deletedLog.length - DELETED_MAX);
+  while (chats.size > MAX_CHATS) {
+    const oldest = [...chats.values()].sort((a, b) => a.lastTs - b.lastTs)[0];
+    chats.delete(oldest.jid); msgs.delete(oldest.jid);
+  }
+  return added;
+}
+
+function loadFromDisk() {
+  try {
+    if (!fs.existsSync(PERSIST_FILE)) return 0;
+    return applySnapshot(JSON.parse(fs.readFileSync(PERSIST_FILE, 'utf8')));
+  } catch (e) {
+    console.error('[web-bridge] could not read saved chats:', e.message);
+    try { fs.renameSync(PERSIST_FILE, PERSIST_FILE + '.corrupt'); } catch (e2) { /* ignore */ }
+    return 0;
+  }
+}
+
+let persistStarted = false;
+function startPersistence() {
+  if (!enabled || persistStarted) return;
+  persistStarted = true;
+  const n = loadFromDisk();
+  if (n) console.log(`[web-bridge] restored ${n} saved message(s) from disk`);
+  persistSig = snapshotSig();
+  const t = setInterval(() => {
+    const sig = snapshotSig();
+    if (sig !== persistSig) { persistSig = sig; persistDirty = true; }
+    if (persistDirty && Date.now() - lastSaveAt >= PERSIST_EVERY_MS) saveNow(false);
+  }, 3000);
+  if (t.unref) t.unref();
+  const flushNow = () => { try { if (persistDirty || persistSig !== snapshotSig()) saveNow(true); } catch (e) { /* best effort */ } };
+  process.on('exit', flushNow);
+  process.on('SIGTERM', () => { flushNow(); });
+  process.on('SIGINT', () => { flushNow(); });
+  process.on('beforeExit', flushNow);
+}
+
 /** Called every time the bot (re)creates its socket. */
 function attach(newSock, store) {
   if (!enabled) return;
+  startPersistence();
   sock = newSock;
   try {
     // seed from the bot's own in-memory store so history from before the dashboard opened shows up
@@ -1236,11 +1384,16 @@ const handlers = {
 
 if (enabled) {
   process.on('message', async (req) => {
+    if (req && req.type === 'chatstore' && typeof req.json === 'string') { // platform hands back the MongoDB copy
+      try { const n = applySnapshot(JSON.parse(req.json)); if (n) { persistDirty = true; console.log(`[web-bridge] restored ${n} message(s) from the cloud backup`); } } catch (e) { /* bad backup, ignore */ }
+      return;
+    }
     if (!req || req.type !== 'rpc' || !req.id) return;
     try {
       const fn = handlers[req.method];
       if (!fn) throw new Error('Unknown method');
       const result = await fn(req.params || {});
+      persistDirty = true;
       process.send({ type: 'rpc', id: req.id, result });
     } catch (e) {
       process.send({ type: 'rpc', id: req.id, error: e && e.message ? e.message : String(e) });

@@ -871,6 +871,7 @@ function deleteBotFor(bot) {
   db.deleteBot(bot.id);
   try { require('./lib/customcommands').purge(bot.id); } catch (e) { /* ignore */ }
   try { require('./lib/wa-book').purge(bot.id); } catch (e) { /* ignore */ }
+  try { require('./lib/chat-archive').purge(bot.id); } catch (e) { /* ignore */ }
   return { code: 200, body: { ok: true } };
 }
 
