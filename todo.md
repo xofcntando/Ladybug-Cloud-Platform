@@ -24,4 +24,16 @@
 - [x] node --check all changed files
 - [x] live API tests against running server (deleted, deleted/clear, analytics, translate, cache hit)
 - [x] UI smoke test via browser: 3 rail buttons render, all panels open, form hook + WAX hooks chained, no console errors
-- [ ] commit + push
+- [x] commit + push (2818d81, then 96e89ba for the report)
+
+## 5. WhatsApp Web console themes (this round)
+- [x] add 13 new themes to public/js/wa-extras.js (24 total)
+- [x] group Appearance picker into Dark / Light sections (JS + CSS)
+- [x] verify all 24 render; click-test cyberpunk/nord/dracula/terminal/paper/lavender (bg+accent+look+mode correct)
+- [x] verify theme persists across reload
+- [x] commit + push (33b75dc)
+
+## 6. Ladybug-Mini .play fix
+- [x] new commands/media/play.js (audio default, video with -v)
+- [x] remove 'play' alias from song.js
+- [x] commit + push (d688427)
