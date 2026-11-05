@@ -1748,3 +1748,28 @@ body[data-page="/web"] { overflow: hidden; }
 .wap-tr-src { background: var(--wa-panel-2); border-radius: 8px; padding: 10px 12px; font-size: 14px; line-height: 1.45; max-height: 160px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
 .wap-tr-out { margin-top: 12px; min-height: 60px; }
 .wap-tr-text { font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+
+/* Channels */
+.wa-chan-add { display: flex; gap: 8px; margin: 4px 0 6px; }
+.wa-chan-add .wa-dialog-input { flex: 1; min-width: 0; }
+.wa-chan-time { color: var(--wa-muted); font-size: 11.5px; flex: none; align-self: flex-start; padding-top: 4px; }
+.wa-chan-tick { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; background: #53bdeb; color: #0b141a; font-size: 9px; vertical-align: middle; }
+.wa-chan-view .wa-gal-head h3 { flex: 1; text-align: left; margin: 0 8px; }
+.wa-chan-top { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.wa-chan-top b { display: block; font-weight: 500; }
+.wa-chan-top small { color: var(--wa-muted); font-size: 12.5px; }
+.wa-chan-desc { color: var(--wa-muted); font-size: 13.5px; line-height: 1.45; margin: 0 0 10px; white-space: pre-wrap; word-break: break-word; }
+.wa-chan-posts { max-height: 42vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 8px 2px; }
+.wa-chan-post { background: var(--wa-panel-2); border-radius: 10px; padding: 8px 10px; max-width: 92%; }
+.wa-chan-post.mine { align-self: flex-end; }
+.wa-chan-text { white-space: pre-wrap; word-break: break-word; font-size: 14.5px; line-height: 1.45; }
+.wa-chan-img { display: block; max-width: 100%; max-height: 220px; border-radius: 8px; margin-bottom: 6px; }
+.wa-chan-media { display: inline-block; background: var(--wa-active); border-radius: 6px; padding: 2px 8px; font-size: 12px; text-transform: capitalize; margin-bottom: 6px; }
+.wa-chan-meta { display: flex; gap: 12px; justify-content: flex-end; color: var(--wa-muted); font-size: 11.5px; margin-top: 4px; }
+.wa-chan-compose { border-top: 1px solid var(--wa-active); padding-top: 10px; margin-top: 6px; }
+.wa-chan-compose textarea { width: 100%; box-sizing: border-box; background: var(--wa-panel-2); color: var(--wa-text); border: 0; border-radius: 10px; padding: 10px 12px; font: inherit; resize: vertical; }
+.wa-chan-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.wa-chan-bar .wa-note { flex: 1; margin: 0; }
+.wa-chan-pick { font-size: 13px; color: var(--wa-muted); margin-bottom: 6px; }
+.wa-chan-pick a { margin-left: 6px; color: inherit; }
+.wa-btn.danger { color: #ef6c5b; }

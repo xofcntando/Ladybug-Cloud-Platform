@@ -2084,7 +2084,7 @@ async function renderWebConsole() {
     catch (e) { console.error('[wa-rich]', e); }
   }
   { const ctx = { S, base, bot, api, toast, esc, dialog, popMenu, openChat, loadChats, paintList, paintTop, avatarHtml, hhmm, paintThread, setReply, $ };
-    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WASTAT', 'WAAUTO', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
+    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WASTAT', 'WACHAN', 'WAAUTO', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
   if (window.WAACC) {
     try { WAACC.init({ bot, api, toast, esc, dialog }); }
     catch (e) { console.error('[wa-accounts]', e); }
@@ -2093,7 +2093,7 @@ async function renderWebConsole() {
 
   // live updates
   webES = new EventSource(base + '/stream');
-  for (const k of ['WACON', 'WASTAT']) { if (window[k] && window[k].bindStream) { try { window[k].bindStream(webES); } catch (e) { console.error('[' + k + ']', e); } } }
+  for (const k of ['WACON', 'WASTAT', 'WACHAN']) { if (window[k] && window[k].bindStream) { try { window[k].bindStream(webES); } catch (e) { console.error('[' + k + ']', e); } } }
   webES.addEventListener('message', (ev) => {
     const d = JSON.parse(ev.data);
     const i = S.chats.findIndex((c) => c.jid === d.jid);

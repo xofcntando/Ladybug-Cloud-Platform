@@ -381,3 +381,15 @@ Chats and messages no longer vanish when you close the app or the bot restarts.
 - With `MONGODB_URI` set, each snapshot is gzipped and mirrored to the `wachats` collection (at most once a minute per bot) and restored on boot when the disk is empty (Render free plan). Deleting a bot deletes its saved history.
 - Not saved: media files (only captions, metadata and small previews), so old photos/videos cannot be re-downloaded after a restart; contact statuses (they expire after 24 h anyway).
 - Code: `lib/bot-shims/webBridge.js` (persistence), `lib/chat-archive.js` (offline reads + MongoDB mirror).
+
+## 📢 Channels (WhatsApp newsletters)
+
+The megaphone button in the console rail opens **Channels**.
+
+- **Follow by link**: paste `https://whatsapp.com/channel/...` (or an id ending in `@newsletter`). The channel is followed and added to the console's list. WhatsApp does not let a linked device list the channels a phone already follows, so channels followed on the phone appear only after you paste their link here.
+- **Read**: recent posts with view counts and reactions. New posts arrive live while the number is online, are saved with the rest of the history, and stay readable (read-only) while the bot is offline.
+- **Post**: if the number owns or admins a channel, post text or a photo / short video (8 MB). Held to 10 posts an hour per bot.
+- **Create**: name + description (3 a day per bot; WhatsApp decides which numbers may create channels).
+- **Mute / unfollow / copy link** from the channel screen. Follows are limited to 20 an hour.
+- Not supported: browsing the public channel directory, opening full-size media from other channels (thumbnails only), editing channel name/picture.
+- API (dashboard session): `GET /api/bots/:id/web/channels`, `GET .../channels/posts?jid=`, `POST .../channels/{add,unfollow,mute,create,post}`. Code: `lib/bot-shims/webBridge.js` (channel section), `lib/webconsole.js`, `public/js/wa-channels.js`.
