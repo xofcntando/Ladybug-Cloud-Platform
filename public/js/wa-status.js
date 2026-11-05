@@ -130,7 +130,7 @@
       ov.innerHTML = `<div class="wa-story-card">
         <div class="wa-story-bars">${items.map((_, k) => `<i><b style="width:${k < i ? 100 : 0}%"></b></i>`).join('')}</div>
         <div class="wa-story-head">${avatarFor(group)}<span><b>${esc(group.name)}</b><small>${esc(when(it.ts))}</small></span>
-          ${group.mine ? '<button class="wa-icon-btn" data-del title="Delete this status">🗑</button>' : ''}<button class="wa-icon-btn" data-x title="Close">✕</button></div>
+          ${it.type !== 'text' ? '<button class="wa-icon-btn" data-save title="Save to this device">⬇</button>' : ''}${group.mine ? '<button class="wa-icon-btn" data-del title="Delete this status">🗑</button>' : ''}<button class="wa-icon-btn" data-x title="Close">✕</button></div>
         <div class="wa-story-stage" id="waStoryStage"></div>
         <button class="wa-story-nav l" data-prev aria-label="Previous"></button><button class="wa-story-nav r" data-next aria-label="Next"></button>
       </div>`;
@@ -138,6 +138,15 @@
       ov.querySelector('[data-prev]').onclick = prev;
       ov.querySelector('[data-next]').onclick = next;
       ov.onclick = (e) => { if (e.target === ov) close(); };
+      const sv = ov.querySelector('[data-save]');
+      if (sv) sv.onclick = async () => {
+        try {
+          const m = await loadMedia(it);
+          const a = document.createElement('a');
+          a.href = m.data; a.download = 'status-' + group.poster + '-' + it.id.slice(0, 8) + '.' + (/video/.test(m.mime) ? 'mp4' : /audio/.test(m.mime) ? 'ogg' : /png/.test(m.mime) ? 'png' : /webp/.test(m.mime) ? 'webp' : 'jpg');
+          document.body.appendChild(a); a.click(); a.remove();
+        } catch (e) { C.toast(e.message, 'err'); }
+      };
       const del = ov.querySelector('[data-del]');
       if (del) del.onclick = async () => {
         if (!confirm('Delete this status for everyone?')) return;
