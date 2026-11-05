@@ -68,17 +68,7 @@ module.exports = {
 
 function updateConfig(key, value) {
   try {
-    const configPath = path.join(__dirname, '..', '..', 'config.js');
-    let configContent = fs.readFileSync(configPath, 'utf8');
-    
-    // Update the value
-    const regex = new RegExp(`(${key}:\\s*)(true|false)`, 'g');
-    configContent = configContent.replace(regex, `$1${value}`);
-    
-    fs.writeFileSync(configPath, configContent, 'utf8');
-    
-    // Reload config
-    delete require.cache[require.resolve('../../config')];
+    require('../../utils/runtimeConfig').set(key, value);
   } catch (error) {
     console.error('Error saving config:', error);
   }

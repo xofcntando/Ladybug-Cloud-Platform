@@ -12,7 +12,7 @@ module.exports = {
     botName: 'Ladybug Mini',
     brand: 'Ntandomods',
     prefix: process.env.PREFIX || '.',
-    sessionName: process.env.SESSION_NAME || 'session', // the platform gives every bot its own folder
+    sessionName: process.env.SESSION_NAME || 'session',
     sessionID: process.env.SESSION_ID || '', //Paste your session here
     newsletterJid: '120363161513685998@newsletter', // Newsletter JID for menu forwarding
     updateZipUrl: 'https://github.com/kids-codentando/Ladybug-Mini/archive/refs/heads/main.zip', // URL to latest code zip for .update command
@@ -109,3 +109,10 @@ module.exports = {
       youtube: 'https://youtube.com/@ntandomods'
     }
 };
+
+
+// Ladybug Cloud: apply per-bot overrides saved by owner commands.
+try {
+  const __overrides = require('./utils/runtimeConfig').load();
+  for (const __k of Object.keys(__overrides)) module.exports[__k] = __overrides[__k];
+} catch (_) { /* optional */ }

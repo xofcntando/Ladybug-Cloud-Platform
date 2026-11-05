@@ -126,6 +126,7 @@ When the bot starts:
 | Category | Example Commands |
 |----------|------------------|
 | General | `.menu` `.ladybug` `.ping` `.uptime` `.owner` `.sticker` |
+| Ladybug | `.sysinfo` `.speed` `.bug` `.spots` `.wings` `.crawl` `.swarm` `.garden` |
 | AI | `.ai` `.chatbot` `.magicstudio` |
 | Media | `.song` `.video` `.tiktok` `.instagram` `.facebook` `.twitter` |
 | Admin | `.antilink` `.antispam` `.welcome` `.promote` `.kick` `.mute` |
@@ -137,6 +138,47 @@ When the bot starts:
 | Crush 💘 | `.crush` `.crushscan` `.crushmeter` `.crushmenu` |
 
 > Type `.menu` in WhatsApp to see the complete, live command list.
+
+### ⭐ Premium (paid) commands
+
+35 commands are gated behind a per-number licence. Any command module that sets
+`premium: true` is checked in `handler.js` before it runs — the bot owner always
+bypasses the gate so they can test.
+
+| Group | Commands |
+|-------|----------|
+| Text effects | `.glitch` `.corrupt` `.banner` `.matrix` `.vhs` `.typewriter` |
+| Text tools | `.font` `.mock` `.reverse` `.censor` `.clap` `.uwu` `.scramble` `.spoiler` `.repeat` `.count` `.password` `.uuid` |
+| Codecs | `.base64` `.unbase64` `.binary` `.unbinary` `.morse` `.unmorse` `.hex` `.unhex` `.hash` |
+| Fast downloaders | `.fastdl` `.fasttt` `.fastig` `.fastfb` `.fastx` `.fastyt` `.fastmp3` `.fastcache` |
+
+Owner commands: `.premium` (own status), `.premium add <jid> [days]` (`0` = lifetime),
+`.premium remove <jid>`, `.premium list`. Licences live in `data/premium.json` and
+self-prune when they expire.
+
+The downloaders sit on `utils/fastFetch.js`: a 15-minute LRU cache, in-flight
+de-duplication, and `Promise.any` provider racing with a hard 12-second cap, so a
+dead mirror costs milliseconds instead of the three minutes a sequential fallback
+would burn. Full details in [`PREMIUM.md`](./PREMIUM.md).
+
+### 🐞 The Ladybug style
+
+Every core command speaks the same visual language: the same `╭───「 🐞 TITLE 」───╮`
+frame, the same icon set, the same `> 🐞 Ladybug Mini • Ntandomods` signature.
+The shared helpers live in `utils/ladybugTheme.js` — `header()`, `row()`, `bar()`,
+`bugBar()`, `latencyVerdict()` and `footer()` — so any new command can match the
+look in a few lines instead of hand-drawing box characters.
+
+- `.ping` — two-sample round trip, spots lit, and a plain-language verdict
+- `.uptime` — how long the bug has been awake, plus a health bar and mood
+- `.speed` — three samples with jitter and a stability reading
+- `.sysinfo` — platform, Node version, cores, load, RAM and heap
+- `.spots` — your permanent luck reading, seeded from your JID
+- `.bug` — 20 real, checkable ladybug facts
+- `.wings` — open the wings: prefix, command count, mode, memory
+- `.crawl` — race a ladybug across the garden
+- `.swarm` — how busy the group is today
+- `.garden` — a themed overview of the current group
 
 ---
 

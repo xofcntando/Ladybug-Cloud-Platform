@@ -23,7 +23,7 @@ const https = require('https');
 const { spawn, spawnSync } = require('child_process');
 
 let ffmpegPath = null;
-try { ffmpegPath = require('ffmpeg-static'); } catch {}
+try { ffmpegPath = require('./ffmpeg').getFfmpegPath() || 'ffmpeg'; } catch {}
 
 const BIN_DIR = path.join(process.env.DATA_DIR || os.tmpdir(), 'bin');
 const IS_WIN = process.platform === 'win32';

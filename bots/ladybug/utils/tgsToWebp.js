@@ -11,9 +11,12 @@
 const fs = require('fs');
 const pako = require('pako');
 const { JSDOM } = require('jsdom');
-const { Canvas } = require('canvas');
+let Canvas;
+try { ({ Canvas } = require('canvas')); }
+catch (_) { ({ Canvas } = require('@napi-rs/canvas')); }
+if (typeof Canvas !== 'function') throw new Error('No usable canvas backend found (install canvas or @napi-rs/canvas)');
 const { spawn } = require('child_process');
-const ffmpegPath = require('ffmpeg-static');
+const ffmpegPath = require('./ffmpeg').getFfmpegPath() || 'ffmpeg';
 
 const tick = () => new Promise((r) => setImmediate(r));
 

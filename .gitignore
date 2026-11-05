@@ -7,3 +7,8 @@ data/
 # YouTube login cookies - never commit
 cookies.txt
 bots/ladybug/cookies.txt
+
+# Per-bot runtime state (created by lib/bots.js)
+bots/ladybug/data_*/
+bots/ladybug/session_*/
+bots/ladybug/tmp_*/

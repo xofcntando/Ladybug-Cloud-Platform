@@ -25,21 +25,11 @@ module.exports = {
     // Update the default setting in config
     const fs = require('fs');
     const path = require('path');
-    const configPath = path.join(__dirname, '../../config.js');
-    
+    const __rc = require('../../utils/runtimeConfig');
+      const __next = option === 'on';
+      __rc.set('anticall', __next);
+      config.anticall = __next;
     try {
-      // Read the current config file
-      let configFile = fs.readFileSync(configPath, 'utf8');
-      
-      // Update the anticall setting
-      if (enabled) {
-        configFile = configFile.replace(/anticall:\s*false/g, 'anticall: true');
-      } else {
-        configFile = configFile.replace(/anticall:\s*true/g, 'anticall: false');
-      }
-      
-      // Write the updated config file
-      fs.writeFileSync(configPath, configFile);
       
       // Clear the config cache so the next require gets the updated version
       delete require.cache[require.resolve('../../config')];

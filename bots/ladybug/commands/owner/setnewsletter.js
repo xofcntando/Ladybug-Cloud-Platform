@@ -77,27 +77,8 @@ module.exports = {
         return extra.reply('❌ Invalid newsletter JID format!\n\nNewsletter JID must end with `@newsletter`\nExample: `120363161513685998@newsletter`');
       }
       
-      // Update config.js
-      const configPath = path.join(__dirname, '../../config.js');
-      let configContent = fs.readFileSync(configPath, 'utf8');
-      
-      // Check if newsletterJid already exists in config
-      if (configContent.includes('newsletterJid:')) {
-        // Update existing newsletterJid
-        configContent = configContent.replace(
-          /newsletterJid:\s*['"]([^'"]+)['"]/,
-          `newsletterJid: '${newsletterJid}'`
-        );
-      } else {
-        // Add newsletterJid after sessionName
-        configContent = configContent.replace(
-          /(sessionName:\s*['"][^'"]+['"],)/,
-          `$1\n    newsletterJid: '${newsletterJid}', // Newsletter JID for menu forwarding`
-        );
-      }
-      
-      // Write updated config
-      fs.writeFileSync(configPath, configContent, 'utf8');
+      // Save per-bot override
+      require('../../utils/runtimeConfig').set('newsletterJid', newsletterJid);
       
       // Update in-memory config
       config.newsletterJid = newsletterJid;

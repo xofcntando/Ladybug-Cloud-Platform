@@ -29,11 +29,8 @@ module.exports = {
       // Update config
       config.prefix = newPrefix;
       
-      // Update config file
-      const configPath = path.join(__dirname, '../../config.js');
-      let configContent = fs.readFileSync(configPath, 'utf-8');
-      configContent = configContent.replace(/prefix: '.*'/, `prefix: '${newPrefix}'`);
-      fs.writeFileSync(configPath, configContent);
+      // Save per-bot override (never edit the shared config.js)
+      require('../../utils/runtimeConfig').set('prefix', newPrefix);
       
       await extra.reply(`✅ Prefix changed to: ${newPrefix}\n\nNew command format: ${newPrefix}command`);
       

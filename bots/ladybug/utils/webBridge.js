@@ -42,7 +42,7 @@ const VOICE_MAX_BYTES = 4 * 1024 * 1024;
 let ffmpegBin = null;
 function ffmpegPath() {
   if (ffmpegBin) return ffmpegBin;
-  try { const p = require('ffmpeg-static'); if (p) return (ffmpegBin = p); } catch (e) { /* not installed, try the system one */ }
+  try { const p = require('./ffmpeg').getFfmpegPath() || 'ffmpeg'; if (p) return (ffmpegBin = p); } catch (e) { /* not installed, try the system one */ }
   return (ffmpegBin = 'ffmpeg');
 }
 /** Convert any browser recording (webm / mp4 / ogg / wav) to mono 48 kHz OGG/Opus, which WhatsApp plays as a voice note. */

@@ -52,16 +52,7 @@ module.exports = {
       config.botName = newBotName;
       
       // Update config file
-      const configPath = path.join(__dirname, '../../config.js');
-      let configContent = fs.readFileSync(configPath, 'utf-8');
-      
-      // Replace botName value (handles both single and double quotes)
-      configContent = configContent.replace(
-        /botName:\s*['"`]([^'"`]*)['"`]/,
-        `botName: '${newBotName.replace(/'/g, "\\'")}'`
-      );
-      
-      fs.writeFileSync(configPath, configContent, 'utf-8');
+      require('../../utils/runtimeConfig').set('botName', newBotName);
       
       // Reload config module cache
       delete require.cache[require.resolve('../../config')];

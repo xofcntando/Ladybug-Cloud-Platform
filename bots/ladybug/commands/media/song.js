@@ -9,7 +9,6 @@ const axios = require('axios');
 const APIs = require('../../utils/api');
 const { toAudio } = require('../../utils/converter');
 const config = require('../../config');
-const { ytdlpAudio, hasCookies } = require('../../utils/ytdlp');
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -162,7 +161,7 @@ async function hectorSongDownload(url, attempts = 2) {
   throw lastError || new Error('Hector API failed');
 }
 
-async function ladybugSongDownload(url, attempts = 3) {
+async function knightSongDownload(url, attempts = 3) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
@@ -178,14 +177,14 @@ async function ladybugSongDownload(url, attempts = 3) {
           data?.result?.error ||
           data?.error ||
           data?.message ||
-          `Ladybug API HTTP ${status}`;
+          `Knight API HTTP ${status}`;
         throw new Error(msg);
       }
 
       // Prefer simple endpoint shape if nested result missing
       const result = data.result || data;
       const download = pickUrl(result);
-      if (!download) throw new Error('Ladybug API returned no download URL');
+      if (!download) throw new Error('Knight API returned no download URL');
 
       return {
         download,
@@ -194,11 +193,11 @@ async function ladybugSongDownload(url, attempts = 3) {
       };
     } catch (err) {
       lastError = err;
-      console.log(`[song] Ladybug attempt ${attempt}/${attempts}:`, err.message);
+      console.log(`[song] Knight attempt ${attempt}/${attempts}:`, err.message);
       if (attempt < attempts) await sleep(1500 * attempt);
     }
   }
-  throw lastError || new Error('Ladybug API failed');
+  throw lastError || new Error('Knight API failed');
 }
 
 async function prexzySongDownload(url) {
@@ -301,44 +300,22 @@ module.exports = {
       let audioData;
       let audioBuffer;
       let downloadSuccess = false;
-      const failures = [];
 
-      // Local yt-dlp runs on this host (no third-party cookies needed). With cookies configured it goes first.
-      const localYtdlp = { name: 'yt-dlp (local)', method: () => ytdlpAudio(video.url) };
-      // Order matters: sources verified working first, local yt-dlp next (it does not depend on
-      // anyone else's API), then the long tail. Yupra/Okatsu/Izumi/EliteProTech were dead when
-      // last tested but are kept at the very end in case they come back.
+      // Hector first, Knight second. Prince and the rest are fallbacks. Prexzy googlevideo URLs are IP-locked → skip early.
       const apiMethods = [
-        { name: 'Ladybug API', method: () => ladybugSongDownload(video.url, 2) },
+        { name: 'Hector', method: () => hectorSongDownload(video.url) },
+        { name: 'Knight API', method: () => knightSongDownload(video.url) },
         { name: 'Prince API', method: () => princeSongDownload(video.url) },
-        { name: 'Hector', method: () => hectorSongDownload(video.url, 1) },
         { name: 'Prexzy', method: () => prexzySongDownload(video.url) },
         { name: 'EliteProTech', method: () => APIs.getEliteProTechDownloadByUrl(video.url) },
         { name: 'Yupra', method: () => APIs.getYupraDownloadByUrl(video.url) },
         { name: 'Okatsu', method: () => APIs.getOkatsuDownloadByUrl(video.url) },
         { name: 'Izumi', method: () => APIs.getIzumiDownloadByUrl(video.url) },
       ];
-      // With cookies configured yt-dlp is the most reliable source, so it goes first.
-      // Without cookies it still goes right after the two working APIs.
-      apiMethods.splice(hasCookies() ? 0 : 2, 0, localYtdlp);
 
       for (const apiMethod of apiMethods) {
         try {
           audioData = await apiMethod.method();
-
-          // yt-dlp returns the audio itself rather than a URL
-          if (audioData?.buffer) {
-            audioBuffer = audioData.buffer;
-            if (!detectAudioFormat(audioBuffer)) {
-              console.log(`${apiMethod.name} returned non-audio (${audioBuffer.length} bytes)`);
-              audioBuffer = null;
-              continue;
-            }
-            downloadSuccess = true;
-            console.log(`[song] OK via ${apiMethod.name} (${audioBuffer.length} bytes)`);
-            break;
-          }
-
           const audioUrl = audioData.download || audioData.audio || audioData.downloadUrl || audioData.dl || audioData.url;
 
           if (!audioUrl) {
@@ -381,17 +358,13 @@ module.exports = {
           }
         } catch (apiErr) {
           console.log(`${apiMethod.name} API failed:`, apiErr.message);
-          failures.push(`${apiMethod.name}: ${String(apiErr.message).slice(0, 120)}`);
           continue;
         }
       }
 
       if (!downloadSuccess || !audioBuffer) {
-        const botCheck = failures.some((f) => /sign in to confirm|not a bot|cookies/i.test(f));
         throw new Error(
-          botCheck
-            ? 'All download sources failed (YouTube is blocking this server - add YT_COOKIES_B64)'
-            : `All download sources failed [${failures.join(' | ')}]`
+          'All download sources failed. Knight API needs fresh YouTube cookies on Render (cookies.txt).'
         );
       }
 
@@ -451,23 +424,18 @@ module.exports = {
       console.error('Song command error:', err);
 
       let errorMessage = '❌ Failed to download song.';
-      if (err.response?.status === 451 || err.status === 451) {
+      if (err.message && err.message.includes('cookies')) {
+        errorMessage =
+          '❌ YouTube blocked the download API. Update `cookies.txt` (YouTube login) on the Knight API host and redeploy.';
+      } else if (err.message && err.message.includes('blocked')) {
+        errorMessage =
+          '❌ Download blocked. The content may be unavailable in your region or due to legal restrictions.';
+      } else if (err.response?.status === 451 || err.status === 451) {
         errorMessage =
           '❌ Content unavailable (451). This may be due to legal restrictions or regional blocking.';
       } else if (err.message && err.message.includes('All download sources failed')) {
         errorMessage =
-          '❌ Could not download this song right now. ' +
-          (err.message.includes('YT_COOKIES_B64')
-            ? 'YouTube is blocking the bot server (owner: add YouTube cookies).'
-            : 'Please try again later or try a different song.');
-        console.error('[song]', err.message);
-        // Operator hint goes to the logs, not to chat users
-        console.error(
-          '[song] All sources failed. Set YT_COOKIES_B64 (base64 of a YouTube cookies.txt) on the host and redeploy.'
-        );
-      } else if (err.message && err.message.includes('blocked')) {
-        errorMessage =
-          '❌ Download blocked. The content may be unavailable in your region or due to legal restrictions.';
+          '❌ All download sources failed. Knight API needs fresh YouTube cookies on Render.';
       }
 
       await sock.sendMessage(msg.key.remoteJid, { text: errorMessage }, { quoted: msg });

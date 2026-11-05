@@ -15,7 +15,7 @@ const { spawn } = require('child_process')
 
 let ffmpegPath = 'ffmpeg'
 try {
-  ffmpegPath = require('ffmpeg-static') || 'ffmpeg'
+  ffmpegPath = require('./ffmpeg').getFfmpegPath() || 'ffmpeg' || 'ffmpeg'
 } catch { /* use system ffmpeg */ }
 
 function ffmpeg(buffer, args = [], ext = '', ext2 = '') {

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 
-const DB_PATH = path.join(__dirname, 'database');
+const DB_PATH = process.env.BOT_DATA_DIR || path.join(__dirname, 'database');
 const GROUPS_DB = path.join(DB_PATH, 'groups.json');
 const USERS_DB = path.join(DB_PATH, 'users.json');
 const WARNINGS_DB = path.join(DB_PATH, 'warnings.json');

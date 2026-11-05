@@ -268,8 +268,6 @@ async function startBotInner() {
   const sessionFolder = `./${config.sessionName}`;
   const sessionFile = path.join(sessionFolder, 'creds.json');
 
-  // Seed the session folder from SESSION_ID once, never overwriting live credentials.
-  // (logic lives in utils/sessionSeed.js, copied from the platform's lib/bot-shims)
   require('./utils/sessionSeed').seed({ sessionID: config.sessionID, sessionFolder });
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
@@ -309,20 +307,8 @@ async function startBotInner() {
   const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
   // Update on every message
-  let undecryptable = 0;
-  sock.ev.on('messages.upsert', ({ messages, type }) => {
+  sock.ev.on('messages.upsert', () => {
     lastActivity = Date.now();
-    // A message with no body and a ciphertext stub means WhatsApp delivered it but our keys
-    // could not open it. That is the classic "bot is online but ignores commands" symptom,
-    // so say it out loud instead of failing silently.
-    for (const m of messages || []) {
-      if (type === 'notify' && !m.key?.fromMe && !m.message && m.messageStubType === 2) {
-        undecryptable += 1;
-        if (undecryptable === 1 || undecryptable % 10 === 0) {
-          console.log(`⚠️ Could not decrypt ${undecryptable} incoming message(s) - the session keys are out of sync. If commands are ignored, re-link this number with a fresh session.`);
-        }
-      }
-    }
   });
 
   // Check every 5 min

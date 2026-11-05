@@ -10,7 +10,7 @@ const { spawn } = require('child_process');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const webp = require('node-webpmux');
 const sharp = require('sharp');
-const ffmpegPath = require('ffmpeg-static');
+const ffmpegPath = require('../../utils/ffmpeg').getFfmpegPath() || 'ffmpeg';
 const config = require('../../config');
 const { getTempDir, deleteTempFile } = require('../../utils/tempManager');
 

@@ -29,3 +29,13 @@ Desktop.ini
 .idea/
 *.swp
 *.swo
+
+data/
+
+# YouTube login cookies - never commit
+cookies.txt
+
+# Per-bot runtime state
+data_*/
+session_*/
+tmp_*/

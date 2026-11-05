@@ -51,7 +51,7 @@ const BOMB_CONFIGS = {
   8: { bombs: 8, mult: [1, 70], lossMult: 30, label: '1 Mine (8 Bombs)', extreme: true },
 };
 
-const ECO_DB_PATH = path.join(__dirname, '..', '..', 'database', 'economy.json');
+const ECO_DB_PATH = path.join(process.env.BOT_DATA_DIR || path.join(__dirname, '..', '..', 'database'), 'economy.json');
 
 function px() {
   return config.prefix;
