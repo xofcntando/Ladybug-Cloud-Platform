@@ -1172,6 +1172,8 @@ app.get('/api/bots/:id/web/gallery', requireAuth, ownWeb('gallery'));
 app.get('/api/bots/:id/web/contacts', requireAuth, ownWeb('contacts'));
 app.post('/api/bots/:id/web/contacts', requireAuth, ownWeb('contactAdd'));
 app.post('/api/bots/:id/web/contacts/remove', requireAuth, ownWeb('contactRemove'));
+app.get('/api/bots/:id/web/automation', requireAuth, ownWeb('automation'));
+app.post('/api/bots/:id/web/automation', requireAuth, ownWeb('automationSet'));
 app.get('/api/bots/:id/web/labels', requireAuth, ownWeb('labels'));
 app.post('/api/bots/:id/web/labels', requireAuth, ownWeb('labelCreate'));
 app.post('/api/bots/:id/web/labels/assign', requireAuth, ownWeb('labelAssign'));

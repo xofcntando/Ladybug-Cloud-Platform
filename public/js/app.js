@@ -2083,7 +2083,7 @@ async function renderWebConsole() {
     catch (e) { console.error('[wa-rich]', e); }
   }
   { const ctx = { S, base, bot, api, toast, esc, dialog, popMenu, openChat, loadChats, paintList, paintTop, avatarHtml, hhmm };
-    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WASTAT']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
+    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WASTAT', 'WAAUTO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
   if (window.WAACC) {
     try { WAACC.init({ bot, api, toast, esc, dialog }); }
     catch (e) { console.error('[wa-accounts]', e); }

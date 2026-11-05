@@ -322,6 +322,17 @@ The Developers page (`#/developers`) has the full guide, including a "Avoid What
 - **Chat labels**: the tag button in the rail, or **Labels...** in a chat's menu. Up to 20 coloured labels, 6 per chat. Labels show as chips on the chat list and as a filter bar (including "No label"). They are saved on the platform per linked number (not in the browser), so they follow you across devices and survive redeploys when `MONGODB_URI` is set. They are local to the console: they are not WhatsApp Business labels on the phone.
 - **Contacts**: the address-book button in the rail, and the **New chat** button. Search contacts, type any number to chat, and **New contact** (name + number, checked against WhatsApp first). Names are saved on the platform and also pushed to the phone's address book when WhatsApp accepts the sync. Edit or remove saved contacts; "Save to contacts" also appears in a chat's info drawer.
 
+### Automation: always online, auto-view status, auto-save status
+
+The bolt button in the rail opens three switches. They are saved on the platform per linked number, passed to the bot at start (`LADYBUG_AUTO`) and applied live when you flip them.
+
+- **Always online**: sends an "available" presence every 25 s while connected (and right after each reconnect), so the number keeps showing Online. Trade-off: while a linked device is online, WhatsApp may stop notifying the phone about new messages.
+- **Auto-view status**: a new status (posted in the last 10 minutes, received live) is marked as viewed after a human-like 2-7 s pause, with 1.5-4 s between several. The poster sees the view only if read receipts are on in Profile > Privacy.
+- **Auto-save status**: drives the bot's own status saver (`.savestatus on|off`), which forwards each new status to the owner's "Message yourself" chat. Needs the bot's `utils/savestatus.js`; the switch is disabled if the bot version doesn't have it. A setting you never touched is left alone, so a value set with `.savestatus` is not overwritten.
+- The story viewer also has a download button to save a photo, video or voice status to your device.
+
+API: `GET|POST /api/bots/:id/web/automation {online?, viewStatus?, saveStatus?}`.
+
 API (all under `/api/bots/:id/web`): `GET status`, `GET status/media?id=`, `POST status/seen {ids}`, `POST status/post {kind:'text'|'media', text, bg, font, data, caption, audience?}`, `POST status/delete {id}`, `GET gallery?jid=&kind=media|docs|links`, `GET|POST contacts {phone, name}`, `POST contacts/remove {jid}`, `GET|POST labels`, `PUT|DELETE labels/:labelId`, `POST labels/assign {jid, labelId, on}`.
 
 ---
