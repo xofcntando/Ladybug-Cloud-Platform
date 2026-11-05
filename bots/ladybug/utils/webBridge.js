@@ -21,7 +21,7 @@ const contacts = new Map(); // jid -> name
 let sock = null;
 let wired = false;
 const raw = new Map(); // message id -> raw WhatsApp message, only for media we may be asked to download
-const RAW_MAX = 250;
+const RAW_MAX = 600;
 const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
 const quietLog = { level: 'silent', info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child() { return quietLog; } };
 let baileysLib = null;
@@ -286,6 +286,110 @@ function subscribeRecent() {
   if (subTimer.unref) subTimer.unref();
 }
 
+/* ---- Status (stories): other people's 24 h updates plus our own. Kept in memory only, like messages. ---- */
+const STATUS_JID = 'status@broadcast';
+const STATUS_TTL = 24 * 3600; // seconds
+const STATUS_MAX = 400;
+const statuses = new Map(); // message id -> entry
+const statusRaw = new Map(); // message id -> raw message (media only)
+const statusSeen = new Set(); // ids we marked as viewed
+const saved = new Map(); // jid -> name saved in the phone's address book (or added here)
+
+const argbHex = (n) => { try { const v = (Number(n) >>> 0) & 0xffffff; return '#' + v.toString(16).padStart(6, '0'); } catch (e) { return null; } };
+const hexArgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(h || '')); return m ? parseInt('ff' + m[1], 16) >>> 0 : null; };
+const FONTS = [0, 1, 2, 6, 7, 8, 9, 10]; // ExtendedTextMessage.FontType values WhatsApp accepts for text statuses
+
+function pruneStatuses() {
+  const cutoff = Math.floor(Date.now() / 1000) - STATUS_TTL;
+  for (const [id, e] of statuses) if (e.ts < cutoff) { statuses.delete(id); statusRaw.delete(id); statusSeen.delete(id); }
+  if (statuses.size > STATUS_MAX) {
+    const old = [...statuses.values()].sort((a, b) => a.ts - b.ts).slice(0, statuses.size - STATUS_MAX);
+    for (const e of old) { statuses.delete(e.id); statusRaw.delete(e.id); }
+  }
+}
+
+function ingestStatus(m) {
+  try {
+    if (!m || !m.key || m.key.remoteJid !== STATUS_JID) return null;
+    // a deleted status arrives as a protocol message
+    const pm = m.message && m.message.protocolMessage;
+    if (pm && pm.key && pm.type === 0) {
+      const gone = statuses.get(pm.key.id);
+      if (gone) { statuses.delete(gone.id); statusRaw.delete(gone.id); emit('statusDeleted', { id: gone.id }); }
+      return null;
+    }
+    const d = describe(m.message);
+    if (!d || !['text', 'image', 'video', 'audio', 'voice'].includes(d.type)) return null;
+    if (statuses.has(m.key.id)) return null;
+    const ts = tsOf(m.messageTimestamp) || Math.floor(Date.now() / 1000);
+    if (ts < Math.floor(Date.now() / 1000) - STATUS_TTL) return null;
+    const fromMe = !!m.key.fromMe;
+    const posterJid = fromMe ? selfJid() : (m.key.participantPn || m.key.participantAlt || m.key.participant || m.participant || '');
+    if (!posterJid) return null;
+    const mm = unwrap(m.message);
+    const e = {
+      id: m.key.id, fromMe, poster: fromMe ? 'me' : num(posterJid), posterJid, name: fromMe ? null : (m.pushName || null),
+      ts, type: d.type === 'voice' ? 'audio' : d.type, text: String(d.text || '').slice(0, 700),
+    };
+    const et = mm.extendedTextMessage;
+    if (d.type === 'text' && et) {
+      e.bg = et.backgroundArgb != null ? argbHex(et.backgroundArgb) : null;
+      e.font = et.font != null ? Number(et.font) || 0 : 0;
+    }
+    const node = mm.imageMessage || mm.videoMessage || mm.audioMessage;
+    if (node) {
+      e.media = { mime: node.mimetype || null, seconds: node.seconds || null, size: Number(node.fileLength && node.fileLength.toNumber ? node.fileLength.toNumber() : node.fileLength) || null };
+      const th = node.jpegThumbnail;
+      if (th) e.thumb = b64(th);
+      statusRaw.set(e.id, m);
+    }
+    statuses.set(e.id, e);
+    if (!fromMe && m.pushName) { contacts.set(posterJid, contacts.get(posterJid) || m.pushName); }
+    pruneStatuses();
+    return e;
+  } catch (err) { return null; }
+}
+
+const statusView = (e) => ({
+  id: e.id, ts: e.ts, type: e.type, text: e.text, bg: e.bg || null, font: e.font || 0, thumb: e.thumb || null,
+  media: e.media || null, fromMe: e.fromMe, seen: e.fromMe || statusSeen.has(e.id),
+});
+
+function statusGroups() {
+  pruneStatuses();
+  const by = new Map();
+  for (const e of statuses.values()) {
+    let g = by.get(e.poster);
+    if (!g) {
+      const jid = e.fromMe ? selfJid() : e.posterJid;
+      g = { poster: e.poster, jid, mine: e.fromMe, name: e.fromMe ? 'My status' : (saved.get(jid) || contacts.get(jid) || e.name || '+' + e.poster), items: [] };
+      by.set(e.poster, g);
+    }
+    if (!g.name || g.name.startsWith('+')) g.name = saved.get(e.posterJid) || contacts.get(e.posterJid) || e.name || g.name;
+    g.items.push(statusView(e));
+  }
+  const out = [...by.values()];
+  for (const g of out) {
+    g.items.sort((a, b) => a.ts - b.ts);
+    g.latest = g.items[g.items.length - 1].ts;
+    g.unseen = g.items.filter((i) => !i.seen).length;
+    g.avatar = (avatars.get(g.jid) || {}).url || null;
+  }
+  out.sort((a, b) => (b.mine - a.mine) || ((b.unseen > 0) - (a.unseen > 0)) || (b.latest - a.latest));
+  return out;
+}
+
+/** Everyone who should see a status we post: known saved contacts and recent one-to-one chats, plus ourselves. */
+function statusAudience(only) {
+  const set = new Set([selfJid()]);
+  const ok = (j) => /@s\.whatsapp\.net$/.test(j);
+  if (Array.isArray(only) && only.length) { for (const j of only.slice(0, 1000)) if (ok(String(j))) set.add(String(j)); return [...set]; }
+  for (const j of saved.keys()) if (ok(j)) set.add(j);
+  for (const c of chats.values()) if (ok(c.jid)) set.add(c.jid);
+  for (const j of contacts.keys()) if (ok(j)) set.add(j);
+  return [...set].slice(0, 1000);
+}
+
 function wire(s) {
   subscribed.clear();
   s.ev.on('connection.update', ({ connection }) => {
@@ -311,6 +415,11 @@ function wire(s) {
   });
   s.ev.on('messages.upsert', ({ messages, type }) => {
     for (const m of messages || []) {
+      if (m.key && m.key.remoteJid === STATUS_JID) {
+        const e = ingestStatus(m);
+        if (e && !e.fromMe) emit('statusNew', { group: e.poster, item: statusView(e), name: saved.get(e.posterJid) || contacts.get(e.posterJid) || e.name || '+' + e.poster });
+        continue;
+      }
       if (applyProtocol(m)) continue;
       const r = ingest(m, type === 'notify');
       if (r) {
@@ -326,13 +435,13 @@ function wire(s) {
     }
   });
   s.ev.on('messaging-history.set', ({ chats: cs, contacts: ct, messages: ms }) => {
-    for (const c of ct || []) if (c.id && (c.name || c.notify)) contacts.set(c.id, c.name || c.notify);
+    for (const c of ct || []) if (c.id && (c.name || c.notify)) { contacts.set(c.id, c.name || c.notify); if (c.name) saved.set(c.id, c.name); }
     for (const c of cs || []) if (c.id && !c.id.endsWith('@broadcast')) { const x = ensureChat(c.id); if (c.name) x.name = c.name; x.unread = c.unreadCount || 0; }
-    for (const m of ms || []) ingest(m, false);
+    for (const m of ms || []) { if (m.key && m.key.remoteJid === STATUS_JID) ingestStatus(m); else ingest(m, false); }
   });
   s.ev.on('chats.upsert', (cs) => { for (const c of cs || []) if (c.id && !c.id.endsWith('@broadcast')) { const x = ensureChat(c.id); if (c.name) x.name = c.name; } });
   s.ev.on('chats.update', (cs) => { for (const c of cs || []) { const x = chats.get(c.id); if (x && typeof c.unreadCount === 'number') x.unread = Math.max(0, c.unreadCount); } });
-  s.ev.on('contacts.upsert', (ct) => { for (const c of ct || []) if (c.id && (c.name || c.notify)) { contacts.set(c.id, c.name || c.notify); const x = chats.get(c.id); if (x && !x.name) x.name = c.name || c.notify; } });
+  s.ev.on('contacts.upsert', (ct) => { for (const c of ct || []) if (c.id && (c.name || c.notify)) { contacts.set(c.id, c.name || c.notify); if (c.name) saved.set(c.id, c.name); const x = chats.get(c.id); if (x && !x.name) x.name = c.name || c.notify; } });
   s.ev.on('groups.upsert', (gs) => { for (const g of gs || []) if (g.id && g.subject) { const x = ensureChat(g.id); x.name = g.subject; } });
   s.ev.on('groups.update', (gs) => { for (const g of gs || []) { const x = chats.get(g.id); if (x && g.subject) x.name = g.subject; } });
   s.ev.on('messages.update', (ups) => {
@@ -354,7 +463,7 @@ function attach(newSock, store) {
   sock = newSock;
   try {
     // seed from the bot's own in-memory store so history from before the dashboard opened shows up
-    if (store && store.messages && !wired) for (const [, byId] of store.messages) for (const m of byId.values()) ingest(m, false);
+    if (store && store.messages && !wired) for (const [, byId] of store.messages) for (const m of byId.values()) { if (m.key && m.key.remoteJid === STATUS_JID) ingestStatus(m); else ingest(m, false); }
   } catch (e) { /* optional */ }
   wired = true;
   wire(newSock);
@@ -717,6 +826,145 @@ const handlers = {
     if (![0, 86400, 604800, 7776000].includes(v)) throw new Error('Choose off, 24 hours, 7 days or 90 days');
     await sock.updateDefaultDisappearingMode(v);
     return { ok: true };
+  },
+  /* ------------------------------------------------------------------ Status (stories) */
+  statusList() {
+    return { groups: statusGroups(), audience: statusAudience().length - 1 };
+  },
+  async statusMedia({ id } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const m = statusRaw.get(String(id));
+    const e = statuses.get(String(id));
+    if (!m || !e || !e.media) throw new Error('This status is no longer available.');
+    if (e.media.size && e.media.size > MEDIA_MAX_BYTES * 2) throw new Error('This status video is too large to play here');
+    const { downloadMediaMessage } = baileys();
+    let buf;
+    try { buf = await downloadMediaMessage(m, 'buffer', {}, { logger: quietLog, reuploadRequest: sock.updateMediaMessage }); }
+    catch (err) {
+      const why = err && err.message ? err.message : String(err);
+      throw new Error(/404|410|gone|not found|expired/i.test(why) ? 'WhatsApp no longer has this status (it expired).' : 'Could not download this status: ' + why);
+    }
+    if (!buf || !buf.length) throw new Error('Could not download this status');
+    const mime = e.media.mime || (e.type === 'video' ? 'video/mp4' : e.type === 'audio' ? 'audio/ogg' : 'image/jpeg');
+    return { mime, data: `data:${mime};base64,${buf.toString('base64')}` };
+  },
+  /** Mark statuses as viewed. The poster sees the view only if our own read-receipt privacy setting allows it. */
+  async statusSeen({ ids } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const keys = [];
+    for (const id of (Array.isArray(ids) ? ids : []).slice(0, 30)) {
+      const e = statuses.get(String(id));
+      if (!e || e.fromMe || statusSeen.has(e.id)) continue;
+      statusSeen.add(e.id);
+      keys.push({ remoteJid: STATUS_JID, id: e.id, participant: e.posterJid, fromMe: false });
+    }
+    if (keys.length) { try { await sock.readMessages(keys); } catch (err) { for (const k of keys) statusSeen.delete(k.id); throw new Error('Could not mark as viewed'); } }
+    return { ok: true, marked: keys.length };
+  },
+  async statusPost({ kind, text, bg, font, data, name, caption, audience } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const list = statusAudience(audience);
+    if (list.length < 2) throw new Error('No contacts to share with yet. Chat with someone or add a contact first.');
+    let sent;
+    if (kind === 'text') {
+      const t = String(text || '').trim();
+      if (!t) throw new Error('Write something first');
+      if (t.length > 700) throw new Error('Text statuses are limited to 700 characters');
+      const opts = { statusJidList: list, backgroundColor: hexArgb(bg) || 0xff1f7a5c, font: FONTS.includes(Number(font)) ? Number(font) : 0 };
+      sent = await sock.sendMessage(STATUS_JID, { text: t }, opts);
+    } else if (kind === 'media') {
+      const mt = /^data:([a-zA-Z0-9.+/-]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(data || ''));
+      if (!mt) throw new Error('Invalid file');
+      const mime = mt[1];
+      const buf = Buffer.from(mt[2], 'base64');
+      if (!buf.length) throw new Error('File is empty');
+      if (buf.length > MEDIA_MAX_BYTES) throw new Error('File is too large (limit 8 MB)');
+      const cap = caption ? String(caption).slice(0, 700) : undefined;
+      let content;
+      if (/^image\/(jpeg|png|webp)$/.test(mime)) content = { image: buf, caption: cap };
+      else if (/^video\/(mp4|3gpp|quicktime)$/.test(mime)) content = { video: buf, caption: cap };
+      else throw new Error('Statuses can be a photo, a short video or text');
+      sent = await sock.sendMessage(STATUS_JID, content, { statusJidList: list });
+    } else throw new Error('Unknown status type');
+    const e = ingestStatus(sent);
+    if (e) emit('statusNew', { group: 'me', item: statusView(e) });
+    return { ok: true, id: sent && sent.key && sent.key.id, sharedWith: list.length - 1, item: e ? statusView(e) : null };
+  },
+  async statusDelete({ id } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const e = statuses.get(String(id));
+    if (!e || !e.fromMe) throw new Error('You can only delete your own statuses');
+    await sock.sendMessage(STATUS_JID, { delete: { remoteJid: STATUS_JID, id: e.id, fromMe: true } }, { statusJidList: statusAudience() });
+    statuses.delete(e.id); statusRaw.delete(e.id);
+    emit('statusDeleted', { id: e.id });
+    return { ok: true };
+  },
+
+  /* ------------------------------------------------------------------ Media, docs and links gallery */
+  gallery({ jid, kind = 'media', limit = 120 } = {}) {
+    if (!okJid(jid)) throw new Error('Invalid chat id');
+    const list = (msgs.get(jid) || []).filter((m) => !m.deleted);
+    const URL_RE = /\bhttps?:\/\/[^\s<>"']+/gi;
+    const isMedia = (m) => m.type === 'image' || m.type === 'video' || m.type === 'sticker';
+    const isDoc = (m) => m.type === 'document' || m.type === 'audio' || m.type === 'voice';
+    const linksOf = (m) => {
+      const urls = [];
+      if (m.link && m.link.url) urls.push(m.link.url);
+      for (const u of String(m.text || '').match(URL_RE) || []) { const c = u.replace(/[).,;!?]+$/, ''); if (!urls.includes(c)) urls.push(c); }
+      return urls.slice(0, 3).map((url) => ({ id: m.id, ts: m.ts, fromMe: m.fromMe, sender: m.sender, url: url.slice(0, 500), title: m.link && m.link.url === url ? m.link.title : '', desc: m.link && m.link.url === url ? m.link.desc : '', thumb: m.link && m.link.url === url ? m.link.thumb : null }));
+    };
+    const counts = { media: 0, docs: 0, links: 0 };
+    const media = [], docs = [], links = [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      if (isMedia(m)) { counts.media++; media.push(m); }
+      else if (isDoc(m)) { counts.docs++; docs.push(m); }
+      const l = linksOf(m);
+      if (l.length) { counts.links += l.length; links.push(...l); }
+    }
+    const cap = Math.min(300, Math.max(1, Number(limit) || 120));
+    const slim = (m) => ({ id: m.id, ts: m.ts, type: m.type, text: m.text, fromMe: m.fromMe, sender: m.sender, thumb: m.thumb || null, media: m.media || null });
+    const items = (kind === 'docs' ? docs : kind === 'links' ? links : media).slice(0, cap);
+    return { kind, counts, items: kind === 'links' ? items : items.map(slim), window: list.length };
+  },
+
+  /* ------------------------------------------------------------------ Contacts (address book) */
+  contactsList() {
+    const out = [];
+    for (const [jid, name] of saved) if (/@s\.whatsapp\.net$/.test(jid)) out.push({ jid, name, phone: num(jid), saved: true });
+    return { contacts: out.sort((a, b) => a.name.localeCompare(b.name)) };
+  },
+  async contactAdd({ phone, name } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    const digits = String(phone || '').replace(/\D/g, '');
+    const label = String(name || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 60);
+    if (!label) throw new Error('Enter a name for this contact');
+    if (digits.length < 7 || digits.length > 15) throw new Error('Enter the phone number with country code, e.g. 27821234567');
+    const r = await sock.onWhatsApp(digits);
+    const hit = Array.isArray(r) ? r.find((x) => x.exists) : null;
+    if (!hit) return { ok: false, exists: false, error: 'That number is not on WhatsApp' };
+    const jid = hit.jid;
+    saved.set(jid, label); contacts.set(jid, label);
+    const c = ensureChat(jid); c.name = label;
+    let synced = false;
+    try {
+      if (typeof sock.addOrEditContact === 'function') {
+        await sock.addOrEditContact(jid, { fullName: label, firstName: label.split(' ')[0], saveOnPrimaryAddressbook: true });
+        synced = true;
+      }
+    } catch (err) { synced = false; }
+    emit('contact', { jid, name: label, chat: chatView(c) });
+    return { ok: true, exists: true, jid, name: label, synced };
+  },
+  async contactRemove({ jid } = {}) {
+    if (!sock) throw new Error('Bot is not connected');
+    if (!okJid(jid)) throw new Error('Invalid contact');
+    let synced = false;
+    try { if (typeof sock.removeContact === 'function') { await sock.removeContact(jid); synced = true; } } catch (err) { synced = false; }
+    saved.delete(jid);
+    const c = chats.get(jid);
+    if (c) { c.name = null; contacts.delete(jid); }
+    return { ok: true, synced };
   },
 };
 

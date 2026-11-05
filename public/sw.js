@@ -1,7 +1,7 @@
 /* Ladybug Cloud service worker: makes the site installable and keeps the app shell available offline.
    API calls are NEVER cached (always live data). */
-const VERSION = 'ladybug-v2';
-const SHELL = ['/', '/css/style.css', '/js/app.js', '/js/wa-extras.js', '/js/wa-accounts.js', '/js/wa-rich.js', '/js/pwa.js', '/img/logo.png', '/img/icon-192.png', '/manifest.webmanifest'];
+const VERSION = 'ladybug-v3';
+const SHELL = ['/', '/css/style.css', '/js/app.js', '/js/wa-extras.js', '/js/wa-accounts.js', '/js/wa-rich.js', '/js/wa-labels.js', '/js/wa-gallery.js', '/js/wa-contacts.js', '/js/wa-status.js', '/js/pwa.js', '/img/logo.png', '/img/icon-192.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -1443,11 +1443,12 @@ async function renderWebConsole() {
     else list = list.filter((c) => !P.archived.includes(c.jid));
     if (S.tab === 'online') list = list.filter((c) => !c.isGroup && isOnline(c));
     if (S.tab === 'unread') list = list.filter((c) => c.unread);
+    if (window.WALBL) list = WALBL.filter(list);
     if (S.tab === 'online') list = [...list].sort((a, b) => (eff(b).state === 'composing') - (eff(a).state === 'composing'));
     list = [...list].sort((a, b) => (P.pinned.includes(b.jid) - P.pinned.includes(a.jid)) || (b.lastTs - a.lastTs));
     if (!list.length) {
       box.innerHTML = `<div class="chat-empty">${S.chats.length
-        ? (S.tab === 'online' ? 'Nobody is online right now. People show up here the moment WhatsApp reports them online or typing.' : S.tab === 'archived' ? 'No archived chats.' : 'No unread chats.')
+        ? (window.WALBL && WALBL.filtering() ? 'No chats with this label in this view.' : S.tab === 'online' ? 'Nobody is online right now. People show up here the moment WhatsApp reports them online or typing.' : S.tab === 'archived' ? 'No archived chats.' : 'No unread chats.')
         : 'No chats yet. When someone messages this number it shows up here.'}</div>`;
       return;
     }
@@ -1462,7 +1463,7 @@ async function renderWebConsole() {
       <div class="wa-chat ${c.jid === S.jid ? 'active' : ''}" data-jid="${esc(c.jid)}">
         ${avatarHtml(c)}
         <div class="wa-chat-body">
-          <div class="wa-chat-row"><b class="wa-name">${esc(c.name)}</b><span>${c.lastTs ? dayLabel(c.lastTs) : ''}</span></div>
+          <div class="wa-chat-row"><b class="wa-name">${esc(c.name)}</b><span>${c.lastTs ? dayLabel(c.lastTs) : ''}</span></div>${window.WALBL ? WALBL.chips(c.jid) : ''}
           <div class="wa-chat-row">${last}<em class="wa-flags">${muted ? '<u title="Muted">🔕</u>' : ''}${pinned ? '<u title="Pinned">📌</u>' : ''}</em>${c.unread ? `<i class="wa-badge ${muted ? 'muted' : ''}">${c.unread}</i>` : ''}<button class="wa-chat-menu" data-cmenu="${esc(c.jid)}" title="Options">${WAI2.chev}</button></div>
         </div>
       </div>`;
@@ -1481,6 +1482,8 @@ async function renderWebConsole() {
       { label: P.pinned.includes(jid) ? 'Unpin chat' : 'Pin chat', run: () => { if (!P.pinned.includes(jid) && P.pinned.length >= 3) return toast('You can pin up to 3 chats', 'err'); toggleIn(P.pinned, jid); paintList(); } },
       { label: P.archived.includes(jid) ? 'Unarchive chat' : 'Archive chat', run: () => { toggleIn(P.archived, jid); paintList(); } },
       { label: P.muted.includes(jid) ? 'Unmute notifications' : 'Mute notifications', run: () => { toggleIn(P.muted, jid); paintList(); } },
+      window.WALBL ? { label: 'Labels…', run: () => WALBL.pick(jid) } : null,
+      window.WAGAL ? { label: 'Media, docs and links', run: () => WAGAL.open(jid) } : null,
       window.WAX ? { label: 'Export chat (.txt)', run: () => WAX.exportChat(jid) } : null,
       c.unread ? { label: 'Mark as read', run: () => { c.unread = 0; api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); paintList(); } } : null,
     ]);
@@ -1526,6 +1529,7 @@ async function renderWebConsole() {
     $('#waFindBtn').onclick = toggleFind;
     $('#waInfoBtn').onclick = openInfo;
     $('#waTopInfo').onclick = openInfo;
+    if (window.WAGAL) WAGAL.decorateTop(top);
   }
 
   /* search inside the open chat */
@@ -1536,6 +1540,20 @@ async function renderWebConsole() {
     $('#waFindInput').value = '';
     if (!bar.hidden) $('#waFindInput').focus();
     paintThread(false);
+  }
+
+  /* extra rows in the info drawer: media gallery, labels, save contact */
+  function decorateInfo(box, c) {
+    const body = box.querySelector('.wa-prof-body');
+    if (!body) return;
+    if (window.WACON) WACON.decorateInfo(box, c);
+    const row = document.createElement('div');
+    row.className = 'wa-con-act';
+    row.innerHTML = [window.WAGAL ? '<button class="wa-btn ghost" data-gal>Media, docs and links</button>' : '', window.WALBL ? '<button class="wa-btn ghost" data-lbl>Labels</button>' : ''].join('');
+    const anchor = body.querySelector('.wa-con-act') || body.querySelector('.wa-info-top');
+    if (anchor) anchor.after(row); else body.prepend(row);
+    const g = row.querySelector('[data-gal]'); if (g) g.onclick = () => WAGAL.open(c.jid);
+    const l = row.querySelector('[data-lbl]'); if (l) l.onclick = () => WALBL.pick(c.jid);
   }
 
   /* group / contact info drawer */
@@ -1551,6 +1569,7 @@ async function renderWebConsole() {
       const mediaN = S.msgs.filter((m) => ['image', 'video', 'document', 'audio', 'voice'].includes(m.type)).length;
       box.innerHTML = `<header class="wa-prof-head"><button class="wa-icon-btn" id="waInfoClose">✕</button><b>Contact info</b></header><div class="wa-prof-body">${head}<div class="wa-set-row"><span>Messages in this session</span><b>${S.msgs.length}</b></div><div class="wa-set-row"><span>Media and files</span><b>${mediaN}</b></div><div class="wa-set-row"><span>Starred messages</span><b>${Object.values(P.starred).filter((x) => x.jid === c.jid).length}</b></div></div>`;
       $('#waInfoClose').onclick = () => $('#waMain').classList.remove('info-open');
+      decorateInfo(box, c);
       return;
     }
     try {
@@ -1563,6 +1582,7 @@ async function renderWebConsole() {
         ${people.map((p) => `<div class="wa-blocked"><span>${esc(p.me ? 'You' : (p.name || '+' + p.phone))}</span>${p.admin ? '<em class="wa-admin">Group admin</em>' : ''}</div>`).join('')}
       </div>`;
       $('#waInfoClose').onclick = () => $('#waMain').classList.remove('info-open');
+      decorateInfo(box, c);
     } catch (e) {
       box.innerHTML = `<header class="wa-prof-head"><button class="wa-icon-btn" id="waInfoClose">✕</button><b>Group info</b></header><div class="wa-prof-body">${head}<div class="chat-empty">${esc(e.message)}</div></div>`;
       $('#waInfoClose').onclick = () => $('#waMain').classList.remove('info-open');
@@ -1830,6 +1850,7 @@ async function renderWebConsole() {
   $('#waSearch').oninput = (e) => { clearTimeout(searchT); searchT = setTimeout(() => { S.q = e.target.value.trim(); loadChats(); }, 250); };
 
   $('#waNew').onclick = async () => {
+    if (window.WACON) return WACON.open();
     const phone = prompt('Phone number with country code, e.g. 27821234567');
     if (!phone) return;
     try {
@@ -2061,6 +2082,8 @@ async function renderWebConsole() {
     try { WARICH.init({ S, base, api, toast, dialog, popMenu, setReply, openChat, loadChats, paintThread }); }
     catch (e) { console.error('[wa-rich]', e); }
   }
+  { const ctx = { S, base, bot, api, toast, esc, dialog, popMenu, openChat, loadChats, paintList, paintTop, avatarHtml, hhmm };
+    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WASTAT']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
   if (window.WAACC) {
     try { WAACC.init({ bot, api, toast, esc, dialog }); }
     catch (e) { console.error('[wa-accounts]', e); }
@@ -2069,6 +2092,7 @@ async function renderWebConsole() {
 
   // live updates
   webES = new EventSource(base + '/stream');
+  for (const k of ['WACON', 'WASTAT']) { if (window[k] && window[k].bindStream) { try { window[k].bindStream(webES); } catch (e) { console.error('[' + k + ']', e); } } }
   webES.addEventListener('message', (ev) => {
     const d = JSON.parse(ev.data);
     const i = S.chats.findIndex((c) => c.jid === d.jid);
