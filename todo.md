@@ -37,3 +37,14 @@
 - [x] new commands/media/play.js (audio default, video with -v)
 - [x] remove 'play' alias from song.js
 - [x] commit + push (d688427)
+
+## 7. More WhatsApp Web automation
+- [x] lib/wa-book.js: auto settings now support readReceipts, rejectCalls, away{enabled,text,cooldownMin}, rules[]
+- [x] validation: boolean-only toggles, away text required, max 50 rules, dedupe by keyword, cleanText keeps line breaks
+- [x] lib/bot-shims/webBridge.js: auto-read via readMessages, call rejection, away + keyword reply engine with per-chat cooldowns
+- [x] lib/webconsole.js: automation GET/POST pass the new fields through
+- [x] public/js/wa-auto.js: rebuilt panel - 5 toggles, away auto-reply form, keyword rule CRUD
+- [x] public/css/style.css: sections, rule rows, dashed add-form
+- [x] mock-socket harness: rule hit, read receipt, away reply, cooldown, group skip, call reject, all-off = silent
+- [x] live API tests: set/get/persist, 400 on empty away, 400 on bad type, rule dedupe
+- [x] UI tests: 5 toggles render, add rule, toggle switch, save away all persist to API

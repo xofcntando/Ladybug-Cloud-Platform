@@ -1661,6 +1661,27 @@ body[data-page="/web"] { overflow: hidden; }
 .wa-switch input:checked + i { background: var(--wa-accent); }
 .wa-switch input:checked + i::after { transform: translateX(18px); }
 .wa-switch input:disabled { cursor: wait; }
+.wa-switch.sm { width: 36px; height: 22px; }
+.wa-switch.sm i::after { width: 16px; height: 16px; }
+.wa-switch.sm input:checked + i::after { transform: translateX(14px); }
+
+/* automation sections (wa-auto.js) */
+.wa-auto-sec { padding: 14px 0 4px; border-top: 1px solid var(--wa-line); margin-top: 6px; }
+.wa-auto-sec:first-of-type { border-top: 0; }
+.wa-auto-sec > h4 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--wa-muted); }
+.wa-auto-act { display: flex; justify-content: flex-end; margin-top: 10px; }
+.wa-dialog.wa-auto-dialog .wa-field textarea { width: 100%; box-sizing: border-box; background: var(--wa-panel-2); border: 1px solid var(--wa-line); border-radius: 8px; color: var(--wa-text); font: inherit; font-size: 14px; padding: 9px 11px; resize: vertical; outline: 0; }
+.wa-dialog.wa-auto-dialog .wa-field textarea:focus { border-color: var(--wa-accent); }
+.wa-rules { margin: 8px 0 4px; }
+.wa-rule { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--wa-panel-2); margin-bottom: 7px; }
+.wa-rule.off { opacity: .55; }
+.wa-rule-body { flex: 1; min-width: 0; }
+.wa-rule-body b { display: block; font-size: 13.5px; font-weight: 600; }
+.wa-rule-body small { display: block; color: var(--wa-muted); font-size: 12.5px; white-space: pre-wrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-rule-add { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px dashed var(--wa-line); border-radius: 10px; margin-top: 10px; }
+.wa-rule-add input, .wa-rule-add textarea { width: 100%; box-sizing: border-box; background: var(--wa-panel-2); border: 1px solid var(--wa-line); border-radius: 8px; color: var(--wa-text); font: inherit; font-size: 14px; padding: 8px 10px; outline: 0; resize: vertical; }
+.wa-rule-add input:focus, .wa-rule-add textarea:focus { border-color: var(--wa-accent); }
+.wa-rule-add .wa-btn { align-self: flex-end; }
 
 /* ---------- Advanced console features (wa-pro.js) ---------- */
 .wa-dialog.wap-wide { width: min(720px, 100%); }
