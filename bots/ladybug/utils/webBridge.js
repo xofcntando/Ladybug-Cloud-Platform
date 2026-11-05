@@ -22,6 +22,11 @@ let sock = null;
 let wired = false;
 const raw = new Map(); // message id -> raw WhatsApp message, only for media we may be asked to download
 const RAW_MAX = 600;
+
+/* ---- Anti-delete: WhatsApp throws the message away when someone taps "delete for everyone".
+   We keep a copy of what it said, so the dashboard can still show it. Memory only. ---- */
+const deletedLog = []; // newest last
+const DELETED_MAX = 300;
 const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
 const quietLog = { level: 'silent', info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child() { return quietLog; } };
 let baileysLib = null;
@@ -42,7 +47,7 @@ const VOICE_MAX_BYTES = 4 * 1024 * 1024;
 let ffmpegBin = null;
 function ffmpegPath() {
   if (ffmpegBin) return ffmpegBin;
-  try { const p = require('./ffmpeg').getFfmpegPath() || 'ffmpeg'; if (p) return (ffmpegBin = p); } catch (e) { /* not installed, try the system one */ }
+  try { const p = require('ffmpeg-static'); if (p) return (ffmpegBin = p); } catch (e) { /* not installed, try the system one */ }
   return (ffmpegBin = 'ffmpeg');
 }
 /** Convert any browser recording (webm / mp4 / ogg / wav) to mono 48 kHz OGG/Opus, which WhatsApp plays as a voice note. */
@@ -250,7 +255,24 @@ function applyProtocol(m) {
     const jid = m.key.remoteJid;
     const e = (msgs.get(jid) || []).find((x) => x.id === pm.key.id);
     if (!e) return true;
-    if (pm.type === 0) { e.deleted = true; e.text = ''; e.media = null; raw.delete(e.id); emit('deleted', { jid, id: e.id }); }
+    if (pm.type === 0) {
+      // Keep what it said before WhatsApp forgets it. This is the "anti-delete" feature.
+      const c = chats.get(jid);
+      const item = {
+        jid, id: e.id, text: String(e.text || '').slice(0, MAX_TEXT), type: e.type || 'text',
+        fromMe: !!e.fromMe, sender: e.sender || (e.fromMe ? 'me' : num(jid)),
+        senderName: e.senderName || null, ts: e.ts || Math.floor(Date.now() / 1000),
+        deletedAt: Math.floor(Date.now() / 1000),
+        chatName: (c && c.name) || contacts.get(jid) || num(jid),
+        isGroup: isGroup(jid),
+        media: e.media ? { mime: e.media.mime || null, name: e.media.name || null, seconds: e.media.seconds || null } : null,
+        quoted: e.quoted ? { text: String(e.quoted.text || '').slice(0, 160), sender: e.quoted.sender || null } : null,
+      };
+      deletedLog.push(item);
+      if (deletedLog.length > DELETED_MAX) deletedLog.splice(0, deletedLog.length - DELETED_MAX);
+      e.deleted = true; e.text = ''; e.media = null; raw.delete(e.id);
+      emit('deleted', { jid, id: e.id, item });
+    }
     else if (pm.type === 14 && pm.editedMessage) {
       const d = describe(pm.editedMessage);
       if (d) { e.text = String(d.text || '').slice(0, MAX_TEXT); e.edited = true; emit('edited', { jid, id: e.id, text: e.text }); }
@@ -764,6 +786,106 @@ const handlers = {
     out.sort((a, b) => b.ts - a.ts);
     return { results: out.slice(0, Math.min(100, Math.max(1, Number(limit) || 40))), total: out.length };
   },
+  /* ---------------------------------------------------------------- Anti-delete */
+
+  /** Messages other people deleted for everyone, with the original text kept. */
+  deletedList({ limit = 200, jid = '' } = {}) {
+    let items = deletedLog;
+    if (jid) items = items.filter((x) => x.jid === String(jid));
+    const total = items.length;
+    const max = Math.min(300, Math.max(1, Number(limit) || 200));
+    return { items: items.slice(-max).reverse(), total };
+  },
+  deletedClear({ jid = '' } = {}) {
+    if (jid) {
+      for (let i = deletedLog.length - 1; i >= 0; i--) if (deletedLog[i].jid === String(jid)) deletedLog.splice(i, 1);
+    } else deletedLog.length = 0;
+    return { ok: true, total: deletedLog.length };
+  },
+
+  /* ---------------------------------------------------------------- Analytics */
+
+  /**
+   * Conversation statistics for this number, computed from the in-memory ring.
+   * Everything is derived locally: no message ever leaves the process.
+   */
+  analytics({ days = 7 } = {}) {
+    const span = Math.min(90, Math.max(1, Number(days) || 7));
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - span * 86400;
+    const hours = new Array(24).fill(0);
+    const weekdays = new Array(7).fill(0);
+    const byDay = new Map(); // YYYY-MM-DD -> { in, out }
+    const media = { image: 0, video: 0, audio: 0, voice: 0, document: 0, sticker: 0, other: 0 };
+    const perChat = new Map(); // jid -> { in, out, total, name, isGroup }
+    let total = 0, incoming = 0, outgoing = 0, deletedCount = 0;
+
+    for (const [jid, list] of msgs) {
+      const c = chats.get(jid);
+      const name = (c && c.name) || contacts.get(jid) || '+' + num(jid);
+      const rec = { in: 0, out: 0, total: 0, name, isGroup: isGroup(jid), lastTs: 0 };
+      for (const m of list) {
+        if (!m.ts || m.ts < from) continue;
+        if (m.type === 'reaction') continue;
+        total++;
+        if (m.fromMe) { outgoing++; rec.out++; } else { incoming++; rec.in++; }
+        rec.total++;
+        if (m.ts > rec.lastTs) rec.lastTs = m.ts;
+        const d = new Date(m.ts * 1000);
+        hours[d.getHours()]++;
+        weekdays[d.getDay()]++;
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const day = byDay.get(key) || { in: 0, out: 0 };
+        if (m.fromMe) day.out++; else day.in++;
+        byDay.set(key, day);
+        if (m.deleted) deletedCount++;
+        const t = m.type;
+        if (t === 'image' || t === 'video' || t === 'audio' || t === 'voice' || t === 'document' || t === 'sticker') media[t]++;
+        else if (t !== 'text') media.other++;
+      }
+      if (rec.total) perChat.set(jid, rec);
+    }
+
+    // Average time to answer: for each incoming message, the gap to our next reply in that chat.
+    let gaps = 0, gapSum = 0;
+    for (const [, list] of msgs) {
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        if (m.fromMe || !m.ts || m.ts < from || m.type === 'reaction') continue;
+        for (let j = i + 1; j < list.length; j++) {
+          const n = list[j];
+          if (!n.fromMe || n.type === 'reaction') continue;
+          const g = n.ts - m.ts;
+          if (g >= 0 && g < 86400) { gaps++; gapSum += g; }
+          break;
+        }
+      }
+    }
+
+    const top = [...perChat.values()].sort((a, b) => b.total - a.total).slice(0, 10)
+      .map((r) => ({ name: r.name, isGroup: r.isGroup, total: r.total, in: r.in, out: r.out, lastTs: r.lastTs }));
+
+    const timeline = [];
+    for (let i = span - 1; i >= 0; i--) {
+      const d = new Date((now - i * 86400) * 1000);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const v = byDay.get(key) || { in: 0, out: 0 };
+      timeline.push({ day: key, in: v.in, out: v.out, total: v.in + v.out });
+    }
+
+    const peakHour = hours.indexOf(Math.max(...hours));
+    return {
+      span, total, incoming, outgoing, deletedCount,
+      chats: perChat.size,
+      groups: [...perChat.values()].filter((r) => r.isGroup).length,
+      hours, weekdays, timeline, media, top,
+      peakHour: total ? peakHour : null,
+      avgReplySec: gaps ? Math.round(gapSum / gaps) : null,
+      replies: gaps,
+      busiestDay: timeline.slice().sort((a, b) => b.total - a.total)[0] || null,
+    };
+  },
+
   /** Delete one of OUR messages for everyone. */
   async deleteMsg({ jid, id } = {}) {
     if (!sock) throw new Error('Bot is not connected');

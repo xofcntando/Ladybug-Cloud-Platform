@@ -1161,6 +1161,11 @@ app.post('/api/bots/:id/web/block', requireAuth, (req, res) => { const b = ownBo
 app.post('/api/bots/:id/web/disappearing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.disappearing(b, req, res); });
 app.post('/api/bots/:id/web/sendvoice', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendVoice(b, req, res); });
 app.get('/api/bots/:id/web/search', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.search(b, req, res); });
+// Advanced: anti-delete archive, conversation analytics, inline translation
+app.get('/api/bots/:id/web/deleted', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deleted(b, req, res); });
+app.post('/api/bots/:id/web/deleted/clear', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deletedClear(b, req, res); });
+app.get('/api/bots/:id/web/analytics', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.analytics(b, req, res); });
+app.post('/api/bots/:id/web/translate', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.translate(b, req, res); });
 // status (stories), gallery, contacts, labels
 const ownWeb = (fn) => (req, res) => { const b = ownBot(req, res); if (b) webconsole[fn](b, req, res); };
 app.get('/api/bots/:id/web/status', requireAuth, ownWeb('statusList'));

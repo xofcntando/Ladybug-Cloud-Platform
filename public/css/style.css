@@ -1658,3 +1658,69 @@ body[data-page="/web"] { overflow: hidden; }
 .wa-switch input:checked + i { background: var(--wa-accent); }
 .wa-switch input:checked + i::after { transform: translateX(18px); }
 .wa-switch input:disabled { cursor: wait; }
+
+/* ---------- Advanced console features (wa-pro.js) ---------- */
+.wa-dialog.wap-wide { width: min(720px, 100%); }
+.wap-count { font-style: normal; font-size: 12px; font-weight: 600; color: var(--wa-muted); background: var(--wa-active); border-radius: 999px; padding: 2px 9px; margin-left: 6px; }
+.wap-muted { color: var(--wa-muted); font-style: italic; }
+.wap-tag { display: inline-block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--wa-muted); background: var(--wa-active); border-radius: 4px; padding: 1px 6px; margin-right: 6px; font-style: normal; }
+
+/* anti-delete */
+.wap-del { padding: 10px 12px; border-radius: 10px; background: var(--wa-panel-2); margin-bottom: 8px; cursor: pointer; border-left: 3px solid #ef6c5b; }
+.wap-del:hover { background: var(--wa-active); }
+.wap-del-top { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.wap-del-top b { font-size: 14px; }
+.wap-del-top small { color: var(--wa-muted); font-size: 12px; }
+.wap-del-body { font-size: 14.5px; line-height: 1.45; word-break: break-word; }
+.wap-quote { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--wa-accent-2); color: var(--wa-muted); font-size: 12.5px; }
+
+/* analytics */
+.wap-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin-bottom: 6px; }
+.wap-kpi { background: var(--wa-panel-2); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.wap-kpi b { font-size: 20px; font-weight: 600; }
+.wap-kpi span { font-size: 11.5px; color: var(--wa-muted); }
+.wap-h4 { margin: 16px 0 8px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--wa-muted); }
+.wap-h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; opacity: .8; }
+.wap-bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 4px 0; }
+.wap-bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; min-width: 0; }
+.wap-bar i { display: block; width: 100%; max-width: 26px; background: var(--wa-accent-2); border-radius: 3px 3px 0 0; position: relative; min-height: 2px; }
+.wap-bar i b { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(255,255,255,.45); border-radius: 3px 3px 0 0; }
+.wap-bar span { font-size: 9.5px; color: var(--wa-muted); }
+.wap-heat { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; }
+.wap-cell { aspect-ratio: 1; border-radius: 3px; display: grid; place-items: center; background: var(--wa-active); }
+.wap-cell span { font-size: 8px; color: rgba(255,255,255,.75); }
+.wap-week, .wap-media { display: flex; flex-direction: column; gap: 5px; }
+.wap-wrow, .wap-mrow { display: grid; grid-template-columns: 42px 1fr 44px; align-items: center; gap: 8px; font-size: 12.5px; }
+.wap-wrow span, .wap-mrow span { color: var(--wa-muted); text-transform: capitalize; }
+.wap-wrow i, .wap-mrow i { height: 8px; background: var(--wa-active); border-radius: 999px; overflow: hidden; display: block; }
+.wap-wrow i b, .wap-mrow i b { display: block; height: 100%; background: var(--wa-accent); border-radius: 999px; }
+.wap-wrow em, .wap-mrow em { font-style: normal; text-align: right; color: var(--wa-muted); font-size: 11.5px; }
+.wap-top { display: flex; flex-direction: column; gap: 6px; }
+.wap-trow { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; background: var(--wa-panel-2); border-radius: 8px; }
+.wap-trow b { font-size: 13.5px; }
+.wap-trow small { color: var(--wa-muted); font-size: 11.5px; }
+
+/* broadcast */
+.wap-pick { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.wap-pick:hover { background: var(--wa-active); }
+.wap-pick input { width: 17px; height: 17px; accent-color: var(--wa-accent); }
+.wap-pick span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wap-bcrow { margin: 10px 0; font-size: 13px; color: var(--wa-muted); }
+.wap-bcrow select { margin-left: 8px; background: var(--wa-panel-2); color: var(--wa-text); border: 1px solid var(--wa-line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.wap-progress { position: relative; height: 26px; background: var(--wa-active); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.wap-progress i { display: block; height: 100%; width: 0; background: var(--wa-accent); transition: width .25s; }
+.wap-progress span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: #fff; }
+
+/* undo send */
+.wap-undo { position: absolute; left: 50%; bottom: 88px; transform: translateX(-50%); z-index: 220; display: flex; align-items: center; gap: 14px; background: #1f2c33; color: #e9edef; border-radius: 999px; padding: 9px 10px 9px 18px; box-shadow: 0 6px 24px rgba(0,0,0,.45); font-size: 13.5px; animation: wapUp .18s ease-out; }
+.wap-undo button { display: flex; align-items: center; gap: 6px; color: #53bdeb; font-weight: 600; padding: 4px 12px; border-radius: 999px; }
+.wap-undo button:hover { background: rgba(83,189,235,.14); }
+@keyframes wapUp { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* translate */
+.wap-tr-btn { position: absolute; top: 4px; left: -30px; width: 24px; height: 24px; border-radius: 50%; font-size: 10px; color: var(--wa-muted); background: var(--wa-panel-2); display: grid; place-items: center; opacity: 0; transition: opacity .12s; }
+.wa-msg:hover .wap-tr-btn { opacity: 1; }
+.wap-tr-btn:hover { background: var(--wa-active); color: var(--wa-text); }
+.wap-tr-src { background: var(--wa-panel-2); border-radius: 8px; padding: 10px 12px; font-size: 14px; line-height: 1.45; max-height: 160px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+.wap-tr-out { margin-top: 12px; min-height: 60px; }
+.wap-tr-text { font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
