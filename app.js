@@ -208,6 +208,8 @@ app.post('/api/auth/register', registerLimiter, (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
   if (String(username).length < 3) return res.status(400).json({ error: 'Username must be at least 3 characters' });
   if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const accepted = (req.body || {}).acceptTerms;
+  if (!(accepted === true || accepted === '1' || accepted === 'true' || accepted === 'on')) return res.status(400).json({ error: 'Please accept the Terms and Conditions to create an account' });
   if (db.findUserByUsername(username)) return res.status(409).json({ error: 'Username already taken' });
   if (email && db.findUserByEmail(email)) return res.status(409).json({ error: 'Email already registered' });
 
@@ -232,6 +234,8 @@ app.post('/api/auth/register', registerLimiter, (req, res) => {
     plan: 'free',
     botLimit: FREE_BOT_LIMIT,
     createdAt: new Date().toISOString(),
+    termsAcceptedAt: new Date().toISOString(),
+    termsVersion: '2026-11-05',
     trialEndsAt: Date.now() + billing.cfg.trialDays * billing.DAY,
     coins: 0,
     regIp,

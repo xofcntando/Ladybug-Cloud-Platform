@@ -1773,3 +1773,19 @@ body[data-page="/web"] { overflow: hidden; }
 .wa-chan-pick { font-size: 13px; color: var(--wa-muted); margin-bottom: 6px; }
 .wa-chan-pick a { margin-left: 6px; color: inherit; }
 .wa-btn.danger { color: #ef6c5b; }
+
+/* Terms and Conditions */
+.legal { padding: 36px 0 70px; }
+.legal .wrap { max-width: 820px; }
+.legal h1 { font-size: 34px; margin: 10px 0 6px; }
+.legal h2 { font-size: 19px; margin: 30px 0 8px; scroll-margin-top: 80px; }
+.legal p { line-height: 1.7; color: var(--text-2, var(--muted)); margin: 0 0 12px; }
+.legal-meta { color: var(--muted); font-size: 14px; }
+.legal-back { display: inline-block; font-size: 14px; text-decoration: underline; color: var(--muted); }
+.legal-toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 18px 0 8px; padding: 14px 16px; border: 1px solid var(--border, rgba(128,128,128,.25)); border-radius: 12px; font-size: 13.5px; }
+.legal-toc a { color: var(--muted); }
+.legal-toc a:hover { color: inherit; text-decoration: underline; }
+.legal-foot { margin-top: 36px; font-size: 13px; color: var(--muted); }
+.terms-check { display: flex; gap: 9px; align-items: flex-start; font-size: 13.5px; color: var(--muted); margin: 4px 0 10px; line-height: 1.45; }
+.terms-check input { margin-top: 3px; flex: none; }
+.terms-check a { text-decoration: underline; }

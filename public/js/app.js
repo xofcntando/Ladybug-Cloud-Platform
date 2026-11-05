@@ -248,6 +248,7 @@ const routes = {
   '/settings': renderSettings,
   '/storage': renderStorage,
   '/developers': renderDevelopers,
+  '/terms': renderTerms,
   '/web': renderWebConsole,
 };
 
@@ -665,7 +666,7 @@ async function renderLanding() {
 
   <footer class="footer">
     <div class="wrap">
-      <span><b>Ladybug Cloud</b> by Ntandomods &middot; <a href="#/developers">Developers &amp; API</a></span>
+      <span><b>Ladybug Cloud</b> by Ntandomods INC &middot; <a href="#/developers">Developers &amp; API</a> &middot; <a href="#/terms">Terms &amp; Conditions</a></span>
       <span>Not affiliated with WhatsApp Inc. Use at your own risk.</span>
     </div>
   </footer>`;
@@ -785,6 +786,7 @@ function authForm(mode) {
           <label for="f-pass">Password</label>
           <input class="input" id="f-pass" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="${isLogin ? 'Your password' : 'At least 6 characters'}" />
         </div>
+        ${isLogin ? '' : `<label class="terms-check"><input type="checkbox" name="acceptTerms" value="1" required /> <span>I agree to the <a href="#/terms" target="_blank" rel="noopener">Terms and Conditions</a> of Ntandomods INC</span></label>`}
         <button class="btn btn-primary btn-block btn-lg" type="submit" style="margin-top:6px">${isLogin ? 'Log in' : 'Create account'}</button>
       </form>
       <p style="text-align:center;margin:22px 0 0;font-size:14px;color:var(--muted)">
@@ -792,6 +794,15 @@ function authForm(mode) {
       </p>
     </div>
   </div>`;
+}
+
+async function renderTerms() {
+  $('#view').innerHTML = window.LB_TERMS ? window.LB_TERMS.html() : '<div class="wrap"><p>Terms are unavailable right now.</p></div>';
+  $$('.legal-toc a').forEach((a) => {
+    a.onclick = (e) => { e.preventDefault(); const t = document.getElementById(a.dataset.sec); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  });
+  const back = $('.legal-back');
+  if (back) back.onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.hash = '#/'; };
 }
 
 async function renderLogin() {

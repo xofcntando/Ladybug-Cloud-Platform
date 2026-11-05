@@ -393,3 +393,10 @@ The megaphone button in the console rail opens **Channels**.
 - **Mute / unfollow / copy link** from the channel screen. Follows are limited to 20 an hour.
 - Not supported: browsing the public channel directory, opening full-size media from other channels (thumbnails only), editing channel name/picture.
 - API (dashboard session): `GET /api/bots/:id/web/channels`, `GET .../channels/posts?jid=`, `POST .../channels/{add,unfollow,mute,create,post}`. Code: `lib/bot-shims/webBridge.js` (channel section), `lib/webconsole.js`, `public/js/wa-channels.js`.
+
+## 📜 Terms and Conditions (Ntandomods INC)
+
+- Public page at `#/terms`, linked from the landing-page footer and the sign-up form. The text lives in `public/js/terms.js` (edit it there; bump `VERSION` and `UPDATED` when it changes).
+- Sign-up now requires ticking "I agree to the Terms and Conditions". The server rejects registration without it and records `termsAcceptedAt` and `termsVersion` on the user.
+- Accounts created before this update have no recorded acceptance; the Terms say continued use counts as acceptance.
+- The text is a practical draft. Have a lawyer check it (especially governing law, refunds and data protection) before relying on it.
