@@ -1403,8 +1403,11 @@ body[data-page="/web"] { overflow: hidden; }
 .wa-look-dialog h4 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--wa-muted); font-weight: 600; }
 .wa-check { display: flex; align-items: center; gap: 10px; font-size: 14px; margin: 8px 0; cursor: pointer; }
 .wa-check input { accent-color: var(--wa-accent); width: 16px; height: 16px; }
-.wa-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; margin-top: 10px; }
+.wa-themes { display: flex; flex-direction: column; gap: 16px; margin-top: 10px; }
 .wa-themes.off { opacity: .45; pointer-events: none; }
+.wa-theme-group { display: block; }
+.wa-theme-glabel { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--wa-muted); margin-bottom: 8px; opacity: .8; }
+.wa-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
 .wa-theme { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; border-radius: 12px; border: 2px solid transparent; font-size: 12.5px; color: var(--wa-muted); }
 .wa-theme:hover { background: var(--wa-active); }
 .wa-theme.on { border-color: var(--wa-accent); color: var(--wa-text); }

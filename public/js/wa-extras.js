@@ -27,6 +27,21 @@
     sunset: L({ name: 'Sunset', bg: '#fffaf5', panel: '#fdeee0', panel2: '#f9e3d0', hover: '#fff3e8', active: '#f9e3d0', line: '#f3dfcf', text: '#3b2418', muted: '#8f6f5c', accent: '#f2711c', accent2: '#ff9a4d', in: '#ffffff', out: '#ffd9b8', chat: '#fbeadb', rail: '#fdeee0', link: '#c2410c', banner: '#fff3e8' }),
     mint: L({ name: 'Mint', bg: '#fcfffd', panel: '#eaf6f0', panel2: '#dcefe6', hover: '#f2faf6', active: '#dcefe6', line: '#d8eadf', text: '#10261c', muted: '#5f7f70', accent: '#0f9d75', accent2: '#2cc395', in: '#ffffff', out: '#c9f2df', chat: '#e3f0ea', rail: '#eaf6f0', link: '#0b7a5a', banner: '#f2faf6' }),
     rose: L({ name: 'Rose', bg: '#fffafb', panel: '#fdeef2', panel2: '#fadde6', hover: '#fff2f5', active: '#fadde6', line: '#f6dfe6', text: '#3a1722', muted: '#946777', accent: '#e11d68', accent2: '#fb5a92', in: '#ffffff', out: '#ffd3e1', chat: '#f9e6ec', rail: '#fdeef2', link: '#be185d', banner: '#fff2f5' }),
+
+    /* ---- added: darker, louder, and a few warmer lights ---- */
+    cyberpunk: D({ name: 'Cyberpunk', bg: '#0a0612', panel: '#170d24', panel2: '#241338', hover: '#170d24', active: '#241338', line: '#22103a', text: '#f3e9ff', muted: '#a58fc4', accent: '#ff2e97', accent2: '#00e5ff', in: '#1c1030', out: '#5b0f4a', chat: '#07040d', rail: '#0a0612', link: '#00e5ff', banner: '#140a20' }),
+    nord: D({ name: 'Nord', bg: '#2e3440', panel: '#3b4252', panel2: '#434c5e', hover: '#3b4252', active: '#434c5e', line: '#3f4859', text: '#eceff4', muted: '#a3adc0', accent: '#88c0d0', accent2: '#8fbcbb', in: '#3b4252', out: '#3f6b78', chat: '#272c36', rail: '#2e3440', link: '#8fbcbb', banner: '#343b48' }),
+    dracula: D({ name: 'Dracula', bg: '#282a36', panel: '#343746', panel2: '#44475a', hover: '#343746', active: '#44475a', line: '#3d4052', text: '#f8f8f2', muted: '#9ba0b5', accent: '#bd93f9', accent2: '#ff79c6', in: '#343746', out: '#5a3f8f', chat: '#21222c', rail: '#282a36', link: '#8be9fd', banner: '#2f3241' }),
+    terminal: D({ name: 'Terminal', bg: '#050805', panel: '#0b120b', panel2: '#122012', hover: '#0b120b', active: '#122012', line: '#12200f', text: '#b8ffb8', muted: '#5f8f5f', accent: '#22ff66', accent2: '#66ffa0', in: '#0b120b', out: '#0f3d1c', chat: '#030603', rail: '#050805', link: '#7dffb0', doodle: 0.03, banner: '#091009' }),
+    coffee: D({ name: 'Coffee', bg: '#1b1512', panel: '#271e19', panel2: '#352820', hover: '#271e19', active: '#352820', line: '#30241d', text: '#f2e7dc', muted: '#a8917f', accent: '#c98a4b', accent2: '#e0aa72', in: '#271e19', out: '#6b4326', chat: '#14100d', rail: '#1b1512', link: '#e0aa72', banner: '#231b16' }),
+    navy: D({ name: 'Navy', bg: '#0a1024', panel: '#121a33', panel2: '#1a2444', hover: '#121a33', active: '#1a2444', line: '#18213c', text: '#e8edfa', muted: '#8494b8', accent: '#3d6bff', accent2: '#6b93ff', in: '#121a33', out: '#1e3a8a', chat: '#070c1a', rail: '#0a1024', link: '#8fb0ff', banner: '#101830' }),
+    wine: D({ name: 'Wine', bg: '#1a0a12', panel: '#2a0f1c', panel2: '#3b1527', hover: '#2a0f1c', active: '#3b1527', line: '#35111f', text: '#fbeaf1', muted: '#b98a9e', accent: '#c2185b', accent2: '#e84a86', in: '#2a0f1c', out: '#7a0f38', chat: '#12060c', rail: '#1a0a12', link: '#ff8fb4', banner: '#250d18' }),
+    jade: D({ name: 'Jade', bg: '#06120f', panel: '#0b1f19', panel2: '#102b23', hover: '#0b1f19', active: '#102b23', line: '#0f2820', text: '#e3f7f0', muted: '#7aa89a', accent: '#14b88a', accent2: '#3ee0b0', in: '#0b1f19', out: '#0d5c46', chat: '#040d0b', rail: '#06120f', link: '#5cf0c8', banner: '#0a1c17' }),
+    mono: D({ name: 'Mono', bg: '#101010', panel: '#1a1a1a', panel2: '#242424', hover: '#1a1a1a', active: '#242424', line: '#232323', text: '#ededed', muted: '#8a8a8a', accent: '#9e9e9e', accent2: '#cfcfcf', in: '#1a1a1a', out: '#3a3a3a', chat: '#0a0a0a', rail: '#101010', link: '#d0d0d0', banner: '#171717' }),
+    paper: L({ name: 'Paper', bg: '#fbfaf7', panel: '#f2efe8', panel2: '#e8e3d9', hover: '#f7f4ee', active: '#e8e3d9', line: '#e4ded2', text: '#23201a', muted: '#7a7364', accent: '#b07d3a', accent2: '#cf9a54', in: '#ffffff', out: '#f3e2c4', chat: '#f5f1e8', rail: '#f2efe8', link: '#96601f', banner: '#f7f4ee' }),
+    sky: L({ name: 'Sky', bg: '#f7fbff', panel: '#e8f2fb', panel2: '#d9e8f7', hover: '#f0f7fd', active: '#d9e8f7', line: '#d5e4f2', text: '#0d2137', muted: '#5d7d99', accent: '#0e7ad4', accent2: '#3aa0f0', in: '#ffffff', out: '#cbe6ff', chat: '#e6f1fa', rail: '#e8f2fb', link: '#0a63ad', banner: '#f0f7fd' }),
+    lavender: L({ name: 'Lavender', bg: '#fbfaff', panel: '#f0edfb', panel2: '#e2ddf7', hover: '#f6f3fe', active: '#e2ddf7', line: '#ded8f4', text: '#221b3a', muted: '#6f6790', accent: '#7c5cf0', accent2: '#a08bff', in: '#ffffff', out: '#ddd4ff', chat: '#f1eefb', rail: '#f0edfb', link: '#5b3fd0', banner: '#f6f3fe' }),
+    sand: L({ name: 'Sand', bg: '#fffdf7', panel: '#f7f1e3', panel2: '#efe6d2', hover: '#fbf6ea', active: '#efe6d2', line: '#eae0cc', text: '#2f2718', muted: '#83765c', accent: '#a8792c', accent2: '#c99a4a', in: '#ffffff', out: '#f6e6c2', chat: '#f8f2e5', rail: '#f7f1e3', link: '#8a611c', banner: '#fbf6ea' }),
   };
   const WALLPAPERS = {
     doodle: { name: 'Doodle', css: null },
@@ -492,10 +507,17 @@
       <section>
         <h4>Theme</h4>
         <label class="wa-check"><input type="checkbox" id="lkSys" ${look.system ? 'checked' : ''}> Follow my device (Midnight at night, Daylight in the day)</label>
-        <div class="wa-themes ${look.system ? 'off' : ''}">${Object.entries(THEMES).map(([id, th]) => `
-          <button type="button" class="wa-theme ${look.theme === id ? 'on' : ''}" data-theme-id="${id}" title="${th.name}">
-            <span class="wa-theme-prev" style="background:${th.chat}"><i style="background:${th.in}"></i><i style="background:${th.out}"></i><b style="background:${th.accent}"></b></span>
-            <span>${th.name}</span></button>`).join('')}</div>
+        <div class="wa-themes ${look.system ? 'off' : ''}">${(() => {
+          const grp = (mode, label) => {
+            const items = Object.entries(THEMES).filter(([, th]) => (th.mode || 'dark') === mode);
+            if (!items.length) return '';
+            return `<div class="wa-theme-group"><span class="wa-theme-glabel">${label}</span><div class="wa-theme-grid">${items.map(([id, th]) => `
+              <button type="button" class="wa-theme ${look.theme === id ? 'on' : ''}" data-theme-id="${id}" title="${th.name}">
+                <span class="wa-theme-prev" style="background:${th.chat}"><i style="background:${th.in}"></i><i style="background:${th.out}"></i><b style="background:${th.accent}"></b></span>
+                <span>${th.name}</span></button>`).join('')}</div></div>`;
+          };
+          return grp('dark', 'Dark') + grp('light', 'Light');
+        })()}</div>
       </section>
       <section>
         <h4>Accent colour</h4>
