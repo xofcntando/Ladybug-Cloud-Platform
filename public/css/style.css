@@ -2528,3 +2528,18 @@ html[data-app="1"] .pwa-install { bottom: calc(92px + env(safe-area-inset-bottom
 .join-meta { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; text-align: left; }
 .join-meta div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--r-md); font-size: 13px; }
 .join-meta span { color: var(--muted); }
+
+/* ---------------------------------------------------------------- mail page */
+.mail-status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.mail-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.mail-value { color: var(--text); font-size: 16px; font-weight: 700; word-break: break-word; }
+.mail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.mail-list { display: flex; flex-direction: column; }
+.mail-row { padding: 13px 4px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 8px; }
+.mail-row:last-child { border-bottom: 0; }
+.mail-row:hover { background: rgba(255, 255, 255, .03); }
+.mail-sub { color: var(--text); font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.mail-meta { color: var(--muted); font-size: 12px; }
+@media (max-width: 720px) {
+  .mail-status { grid-template-columns: 1fr; gap: 14px; }
+}

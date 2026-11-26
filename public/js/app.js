@@ -253,6 +253,9 @@ const routes = {
   '/web': renderWebConsole,
   '/activity': renderActivity,
   '/join': renderJoin,
+  '/mail': renderMail,
+  '/verify': renderVerify,
+  '/reset': renderReset,
 };
 
 // The Activity page and the Command Palette live in their own modules so app.js stays readable.
@@ -292,6 +295,7 @@ function renderNav() {
     el.innerHTML = `
       <a href="#/dashboard" class="nav-link hide-sm">Dashboard</a>
       <a href="#/activity" class="nav-link hide-sm">Activity</a>
+      <a href="#/mail" class="nav-link hide-sm">Mail</a>
       <a href="#/storage" class="nav-link hide-sm">Storage</a>
       <a href="#/pay" class="nav-link hide-sm">Pay</a>
       <a href="#/support" class="nav-link hide-sm">Contact admin</a>
@@ -802,6 +806,7 @@ function authForm(mode) {
           <input class="input" id="f-pass" name="password" type="password" autocomplete="${isLogin ? 'current-password' : 'new-password'}" required placeholder="${isLogin ? 'Your password' : 'At least 6 characters'}" />
         </div>
         ${isLogin ? '' : `<label class="terms-check"><input type="checkbox" name="acceptTerms" value="1" required /> <span>I agree to the <a href="#/terms" target="_blank" rel="noopener">Terms and Conditions</a> of Ntandomods INC</span></label>`}
+        ${isLogin ? '<p style="text-align:right;margin:-2px 0 10px"><a href="#/reset" style="font-size:13px;color:var(--muted);text-decoration:underline">Forgot your password?</a></p>' : ''}
         <button class="btn btn-primary btn-block btn-lg" type="submit" style="margin-top:6px">${isLogin ? 'Log in' : 'Create account'}</button>
       </form>
       <p style="text-align:center;margin:22px 0 0;font-size:14px;color:var(--muted)">
@@ -3841,4 +3846,214 @@ async function renderStorage() {
       } catch (e) { toast(e.message, 'err'); }
     };
   });
+}
+
+/* ---------------------------------------------------------------- mail */
+/**
+ * Mail page. Shows whether outbound email is live, lets you confirm your
+ * address, send yourself a test, and — when no provider key is configured —
+ * read the local outbox so the flow is still usable end to end.
+ */
+async function renderMail() {
+  if (!state.user) return (location.hash = '#/login');
+  $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="spin"></div></div></div>`;
+
+  let st, box;
+  try {
+    st = await api('/api/mail/status');
+    box = await api('/api/mail/outbox');
+  } catch (e) {
+    $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="card"><h2>Mail unavailable</h2><p class="sub">${esc(e.message)}</p></div></div></div>`;
+    return;
+  }
+
+  const rows = (box.messages || []).map((m) => `
+    <div class="mail-row" data-file="${esc(m.file)}">
+      <div class="mail-sub">${esc(m.subject || '(no subject)')}</div>
+      <div class="mail-meta">to ${esc(m.to)} &middot; ${timeAgo(m.at)}${m.template ? ' &middot; ' + esc(m.template) : ''}${m.failed ? ' &middot; <span style="color:#f87171">send failed</span>' : ''}</div>
+    </div>`).join('');
+
+  $('#view').innerHTML = `
+  <div class="app"><div class="wrap">
+    <div class="page-head">
+      <div>
+        <h1>Mail</h1>
+        <p class="sub">Receipts, password resets, team invites and crash alerts sent from Ladybug Cloud.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <div class="mail-status">
+        <div>
+          <div class="mail-label">Delivery</div>
+          <div class="mail-value">${st.live ? esc(st.provider) : 'Local outbox'}</div>
+        </div>
+        <div>
+          <div class="mail-label">From</div>
+          <div class="mail-value" style="font-size:13px">${esc(st.from)}</div>
+        </div>
+        <div>
+          <div class="mail-label">Your address</div>
+          <div class="mail-value" style="font-size:13px">${st.email ? esc(st.email) : '<span style="color:#f87171">not set</span>'}
+            ${st.email ? (st.verified ? '<span class="chip role-viewer" style="margin-left:6px">Verified</span>' : '<span class="chip" style="margin-left:6px">Unverified</span>') : ''}
+          </div>
+        </div>
+      </div>
+      ${st.hint ? `<div class="alert" style="margin-top:14px;background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);color:#fdba74;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.6">${esc(st.hint)}</div>` : ''}
+      <div class="mail-actions">
+        ${st.email && !st.verified ? '<button class="btn btn-primary btn-sm" id="mailVerify">Confirm my email</button>' : ''}
+        <button class="btn btn-sm" id="mailTest" ${st.email ? '' : 'disabled'}>Send me a test</button>
+        <span class="muted" style="font-size:12px;align-self:center">${st.templates.length} templates ready</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h3>${st.live ? 'Recent mail' : 'Outbox'}</h3>
+        <span class="muted" style="font-size:12px">${box.total || 0} message${(box.total || 0) === 1 ? '' : 's'}</span>
+      </div>
+      ${rows ? `<div class="mail-list">${rows}</div>` : '<p class="sub" style="margin:0">Nothing here yet. Sign-up confirmations, invites and receipts will appear here.</p>'}
+    </div>
+  </div></div>`;
+
+  const v = $('#mailVerify');
+  if (v) v.onclick = async () => {
+    v.disabled = true;
+    try {
+      const r = await api('/api/auth/verify/resend', { method: 'POST', body: {} });
+      toast(r.preview ? 'Sent to the local outbox — open it below.' : 'Confirmation email sent. Check your inbox.');
+      renderMail();
+    } catch (e) { toast(e.message, 'err'); v.disabled = false; }
+  };
+
+  const t = $('#mailTest');
+  if (t) t.onclick = async () => {
+    t.disabled = true;
+    try {
+      const r = await api('/api/mail/test', { method: 'POST', body: {} });
+      toast(r.ok ? (r.provider === 'outbox' ? 'Written to the outbox.' : 'Test message sent.') : (r.error || 'Could not send'), r.ok ? 'ok' : 'err');
+      renderMail();
+    } catch (e) { toast(e.message, 'err'); t.disabled = false; }
+  };
+
+  $$('.mail-row').forEach((row) => {
+    row.onclick = async () => {
+      try {
+        const m = await api('/api/mail/outbox/' + encodeURIComponent(row.dataset.file));
+        openModal(`<div class="modal-head"><h3>${esc(m.envelope.subject || '(no subject)')}</h3><button class="icon-btn" data-close>&times;</button></div>
+          <div class="modal-body">
+            <p class="sub" style="margin:0 0 12px">To ${esc(m.envelope.to)} &middot; ${esc(m.envelope.at)}${m.envelope.failed ? ' &middot; failed: ' + esc(m.envelope.failed) : ''}</p>
+            <div style="background:#fff;border-radius:10px;overflow:hidden;max-height:60vh;overflow-y:auto">${m.html || '<pre style="padding:16px;color:#111;white-space:pre-wrap">' + esc(m.envelope.text) + '</pre>'}</div>
+          </div>`);
+      } catch (e) { toast(e.message, 'err'); }
+    };
+  });
+}
+
+/* ---------------------------------------------------------------- verify email */
+async function renderVerify() {
+  const m = /[?&]token=([^&]+)/.exec(location.hash);
+  const tok = m ? decodeURIComponent(m[1]) : '';
+  $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap">
+    <div class="card join-card"><div class="spin"></div><p class="sub" style="margin-top:12px">Confirming your email...</p></div>
+  </div></div></div>`;
+  if (!tok) {
+    $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap"><div class="card join-card">
+      <h2>Nothing to confirm</h2><p class="sub">This link is missing its token.</p>
+      <a class="btn btn-primary" href="#/mail">Go to Mail</a></div></div></div></div>`;
+    return;
+  }
+  try {
+    const r = await api('/api/auth/verify', { method: 'POST', body: { token: tok } });
+    if (r.user) state.user = r.user;
+    $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap"><div class="card join-card">
+      <h2>Email confirmed</h2>
+      <p class="sub">${esc((r.user && r.user.email) || 'Your address')} is now verified. Receipts, invites and crash alerts will reach you.</p>
+      <a class="btn btn-primary" href="#/dashboard">Go to my bots</a></div></div></div></div>`;
+    toast('Email confirmed');
+  } catch (e) {
+    $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap"><div class="card join-card">
+      <h2>Could not confirm</h2><p class="sub">${esc(e.message)}</p>
+      <a class="btn btn-primary" href="#/mail">Request a new link</a></div></div></div></div>`;
+  }
+}
+
+/* ---------------------------------------------------------------- password reset */
+async function renderReset() {
+  const m = /[?&]token=([^&]+)/.exec(location.hash);
+  const tok = m ? decodeURIComponent(m[1]) : '';
+
+  if (!tok) {
+    $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap"><div class="card join-card">
+      <h2>Reset your password</h2>
+      <p class="sub">Enter the email on your account and we will send a link.</p>
+      <div class="alert alert-error" id="err"></div>
+      <form id="forgotForm">
+        <div class="field"><label for="f-mail">Email</label><input class="input" id="f-mail" name="email" type="email" required placeholder="you@example.com" /></div>
+        <button class="btn btn-primary btn-block" type="submit">Send reset link</button>
+      </form>
+      <p style="text-align:center;margin:18px 0 0;font-size:14px;color:var(--muted)"><a href="#/login" style="text-decoration:underline">Back to log in</a></p>
+    </div></div></div></div>`;
+    $('#forgotForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      const err = $('#err');
+      btn.disabled = true;
+      try {
+        const r = await api('/api/auth/forgot', { method: 'POST', body: { email: new FormData(e.target).get('email') } });
+        err.className = 'alert alert-ok show';
+        err.textContent = r.message || 'Check your inbox.';
+      } catch (ex) {
+        err.className = 'alert alert-error show';
+        err.textContent = ex.message;
+        btn.disabled = false;
+      }
+    };
+    return;
+  }
+
+  $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap">
+    <div class="card join-card"><div class="spin"></div><p class="sub" style="margin-top:12px">Checking your link...</p></div>
+  </div></div></div>`;
+  let info;
+  try { info = await api('/api/auth/reset/' + encodeURIComponent(tok)); }
+  catch (e) {
+    $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap"><div class="card join-card">
+      <h2>Link not usable</h2><p class="sub">${esc(e.message)}</p>
+      <a class="btn btn-primary" href="#/reset">Request a new link</a></div></div></div></div>`;
+    return;
+  }
+
+  $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap"><div class="card join-card">
+    <h2>Choose a new password</h2>
+    <p class="sub">For <b>${esc(info.username)}</b> (${esc(info.email || 'no email')}). This link works once.</p>
+    <div class="alert alert-error" id="err"></div>
+    <form id="resetForm">
+      <div class="field"><label for="f-pass">New password</label><input class="input" id="f-pass" name="password" type="password" required minlength="6" placeholder="At least 6 characters" /></div>
+      <div class="field"><label for="f-pass2">Repeat password</label><input class="input" id="f-pass2" name="confirm" type="password" required minlength="6" placeholder="Same again" /></div>
+      <button class="btn btn-primary btn-block" type="submit">Set new password</button>
+    </form>
+  </div></div></div></div>`;
+
+  $('#resetForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    const err = $('#err');
+    const fd = new FormData(e.target);
+    if (fd.get('password') !== fd.get('confirm')) {
+      err.className = 'alert alert-error show';
+      err.textContent = 'Those passwords do not match.';
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api('/api/auth/reset', { method: 'POST', body: { token: tok, password: fd.get('password') } });
+      toast('Password changed. Log in with the new one.');
+      location.hash = '#/login';
+    } catch (ex) {
+      err.className = 'alert alert-error show';
+      err.textContent = ex.message;
+      btn.disabled = false;
+    }
+  };
 }

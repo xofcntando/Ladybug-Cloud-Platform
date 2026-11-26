@@ -31,7 +31,8 @@ ok('appmode.js is loaded by index.html', () => {
 
 ok('appmode.js is precached so the installed app has it offline', () => {
   assert.ok(/'\s*\/js\/appmode\.js'\s*,?/.test(sw), 'not in SHELL');
-  assert.ok(/ladybug-v8/.test(sw), 'cache version not bumped');
+  const v = /ladybug-v(\d+)/.exec(sw);
+  assert.ok(v && Number(v[1]) >= 8, 'cache version not bumped');
 });
 
 ok('app mode is detected from standalone display, ?app=1 and the stored flag', () => {

@@ -208,11 +208,17 @@ lib/bots.js          Process manager (spawn/stop/restart, logs, auto-restart)
 lib/installer.js     GitHub/ZIP installer + npm dependency runner
 lib/sessiongen.js    Pairing job manager (in-browser session generation)
 lib/sessiongen-worker.js  Baileys worker that requests the pairing code
+lib/team.js          Team access: roles, invites, ownership transfer
+lib/mailer.js        Transactional email (Resend/SendGrid/Mailgun/Postmark + file outbox)
+lib/authmail.js      Verify and reset tokens, invite email glue
 public/              Vanilla JS SPA (landing, auth, dashboard, admin)
 bots/ladybug/        Installed bot code (gitignored, runtime)
 data/                db.json (gitignored, runtime)
 render.yaml          Render blueprint
 ```
+
+See [TEAM_ACCESS.md](TEAM_ACCESS.md) for sharing a bot and [EMAIL.md](EMAIL.md)
+for transactional email plus the DNS records for real `@remotewire.net` mailboxes.
 
 ---
 

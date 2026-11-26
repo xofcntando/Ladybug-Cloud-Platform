@@ -36,6 +36,8 @@ const storage = require('./lib/storage');
 const activity = require('./lib/activity');
 const siteSearch = require('./lib/site-search');
 const team = require('./lib/team');
+const mailer = require('./lib/mailer');
+const authmail = require('./lib/authmail');
 const { securityHeaders, rateLimit } = require('./lib/security');
 
 // Bot lifecycle events are already emitted on the shared bus for webhooks; mirror them into
@@ -262,6 +264,12 @@ app.post('/api/auth/register', registerLimiter, (req, res) => {
   db.addUser(user);
   req.session.userId = user.id;
   activity.log(user.id, { type: 'account', title: 'Account created', detail: referrer ? 'Signed up with an invite from ' + referrer.username : 'Signed up for Ladybug Cloud.' });
+  // Send the confirmation link without blocking the sign-up response.
+  if (user.email) {
+    authmail.sendVerify(user, regIp)
+      .then((r) => { if (!r.ok) console.warn('[mail] verify send failed for', user.username, '-', r.error); })
+      .catch(() => {});
+  }
   res.json({ ok: true, user: publicUser(user) });
 });
 
@@ -287,6 +295,138 @@ app.get('/api/auth/me', (req, res) => {
   if (!req.session.userId) return res.json({ user: null });
   const user = db.findUserById(req.session.userId);
   res.json({ user: user ? publicUser(user) : null });
+});
+
+// ---------------------------------------------------------------- email verification
+// FREE feature: confirm the address on the account so receipts, alerts and team
+// invites can actually be delivered.
+const mailLimiter = rateLimit({ windowMs: 15 * 60_000, max: 8, message: 'Too many email requests. Try again in a few minutes.' });
+
+app.post('/api/auth/verify/resend', requireAuth, mailLimiter, async (req, res) => {
+  if (!req.user.email) return res.status(400).json({ error: 'Add an email address to your account first.' });
+  if (req.user.emailVerifiedAt) return res.json({ ok: true, alreadyVerified: true });
+  const r = await authmail.sendVerify(req.user, req.ip);
+  if (!r.ok) return res.status(502).json({ error: 'We could not send that email right now. Try again shortly.', detail: r.error || null });
+  activity.log(req.user.id, { type: 'security', title: 'Verification email sent', detail: `To ${req.user.email} via ${r.provider}.` });
+  res.json({ ok: true, provider: r.provider, expiresAt: r.expiresAt, preview: r.provider === 'outbox' });
+});
+
+app.get('/api/auth/verify/:token', (req, res) => {
+  const t = authmail.peek(req.params.token, 'verify');
+  if (!t) return res.status(404).json({ error: 'This link is not valid. Request a new one.' });
+  if (t.invalid === 'used') return res.json({ ok: true, alreadyVerified: true });
+  if (t.invalid === 'expired') return res.status(410).json({ error: 'This link has expired. Request a new one.' });
+  const u = db.findUserById(t.userId);
+  if (!u) return res.status(404).json({ error: 'That account no longer exists.' });
+  res.json({ ok: true, email: u.email, username: u.username, expiresAt: t.expiresAt });
+});
+
+app.post('/api/auth/verify', mailLimiter, (req, res) => {
+  const c = authmail.consume((req.body || {}).token, 'verify');
+  if (!c.ok) return res.status(400).json({ error: c.error });
+  const u = db.findUserById(c.userId);
+  if (!u) return res.status(404).json({ error: 'That account no longer exists.' });
+  authmail.burn(c.rec);
+  db.updateUser(u.id, { emailVerifiedAt: new Date().toISOString() });
+  activity.log(u.id, { type: 'security', title: 'Email verified', detail: u.email });
+  res.json({ ok: true, user: publicUser(db.findUserById(u.id)) });
+});
+
+// ---------------------------------------------------------------- password reset
+// The response is identical whether or not the address exists, so this endpoint
+// cannot be used to discover who has an account.
+const RESET_ANSWER = { ok: true, message: 'If that address has an account, a reset link is on its way.' };
+
+app.post('/api/auth/forgot', mailLimiter, async (req, res) => {
+  const addr = String((req.body || {}).email || '').trim().toLowerCase();
+  if (!mailer.validEmail(addr)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  const u = db.findUserByEmail(addr);
+  if (!u) return res.json(RESET_ANSWER);
+  const r = await authmail.sendReset(u, req.ip);
+  activity.log(u.id, { type: 'security', title: 'Password reset requested', detail: `Link sent to ${addr} via ${r.provider}.` });
+  if (!r.ok) return res.status(502).json({ error: 'We could not send that email right now. Try again shortly.' });
+  res.json(RESET_ANSWER);
+});
+
+app.get('/api/auth/reset/:token', (req, res) => {
+  const t = authmail.peek(req.params.token, 'reset');
+  if (!t) return res.status(404).json({ error: 'This link is not valid. Request a new one.' });
+  if (t.invalid === 'used') return res.status(410).json({ error: 'This link has already been used. Request a new one.' });
+  if (t.invalid === 'expired') return res.status(410).json({ error: 'This link has expired. Request a new one.' });
+  const u = db.findUserById(t.userId);
+  if (!u) return res.status(404).json({ error: 'That account no longer exists.' });
+  res.json({ ok: true, username: u.username, email: u.email, expiresAt: t.expiresAt });
+});
+
+app.post('/api/auth/reset', mailLimiter, (req, res) => {
+  const b = req.body || {};
+  const c = authmail.consume(b.token, 'reset');
+  if (!c.ok) return res.status(400).json({ error: c.error });
+  const pw = String(b.password || '');
+  if (pw.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const u = db.findUserById(c.userId);
+  if (!u) return res.status(404).json({ error: 'That account no longer exists.' });
+  authmail.burn(c.rec);
+  db.updateUser(u.id, {
+    passwordHash: bcrypt.hashSync(pw, 10),
+    passwordChangedAt: new Date().toISOString(),
+    emailVerifiedAt: u.emailVerifiedAt || new Date().toISOString(),
+  });
+  activity.log(u.id, { type: 'security', title: 'Password reset', detail: 'Reset with an emailed link.' });
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------- mail console
+// Shows how email is configured and, when no provider key is set, the local
+// outbox so the whole flow can be exercised without a mail account.
+app.get('/api/mail/status', requireAuth, (req, res) => {
+  const st = mailer.status();
+  res.json({
+    ...st,
+    verified: !!req.user.emailVerifiedAt,
+    email: req.user.email || null,
+    templates: Object.keys(mailer.TEMPLATES),
+    outboxCount: mailer.outbox(200).length,
+    isAdmin: !!req.user.isAdmin,
+  });
+});
+
+app.get('/api/mail/outbox', requireAuth, (req, res) => {
+  const mine = String(req.user.email || '').toLowerCase();
+  let list = mailer.outbox(100);
+  if (!req.user.isAdmin) list = list.filter((m) => String(m.to || '').toLowerCase() === mine);
+  res.json({ messages: list.slice(0, 40), total: list.length });
+});
+
+app.get('/api/mail/outbox/:file', requireAuth, (req, res) => {
+  const m = mailer.outboxMessage(req.params.file);
+  if (!m) return res.status(404).json({ error: 'Message not found' });
+  const mine = String(req.user.email || '').toLowerCase();
+  if (!req.user.isAdmin && String(m.envelope.to || '').toLowerCase() !== mine) {
+    return res.status(403).json({ error: 'That message is not yours' });
+  }
+  res.json(m);
+});
+
+app.post('/api/mail/test', requireAuth, mailLimiter, async (req, res) => {
+  const to = String((req.body || {}).to || req.user.email || '').trim();
+  if (!mailer.validEmail(to)) return res.status(400).json({ error: 'Enter a valid recipient address.' });
+  if (!req.user.isAdmin && to.toLowerCase() !== String(req.user.email || '').toLowerCase()) {
+    return res.status(403).json({ error: 'You can only send a test to your own address.' });
+  }
+  const r = await mailer.send({
+    to,
+    subject: 'Ladybug Cloud test message',
+    html: mailer.layout({
+      title: 'Your mail setup works',
+      preheader: 'This is a test message from Ladybug Cloud.',
+      body: '<p style="margin:0 0 14px;">If you are reading this, Ladybug Cloud can send email for your account.</p><p style="margin:0;color:#94a3b8;font-size:13px;">Sent through ' + mailer.escapeHtml(mailer.provider()) + '.</p>',
+      cta: { label: 'Open Ladybug Cloud', url: mailer.cfg.appUrl },
+    }),
+    text: `Ladybug Cloud test message. Sent through ${mailer.provider()}.`,
+    template: 'test',
+  });
+  res.status(r.ok ? 200 : 502).json(r);
 });
 
 // ---------------------------------------------------------------- account settings
@@ -767,6 +907,15 @@ app.post('/api/admin/payment-requests/:id/approve', requireAdmin, (req, res) => 
   notifyUser(u.id, `Payment confirmed (${x.currency} ${x.amount}, ref ${x.reference}). Activated: ${what}. Thank you!`);
   activity.log(u.id, { type: 'billing', title: 'Payment approved', detail: `${x.itemName || x.item} - ${x.currency} ${x.amount}. Activated: ${what}.`, meta: { item: x.item, amount: x.amount, currency: x.currency } });
   db.save();
+  if (u.email) {
+    mailer.sendTemplate('receipt', u.email, {
+      username: u.username,
+      item: `${x.itemName || x.item}${x.qty > 1 ? ' x' + x.qty : ''}`,
+      amount: `${x.currency} ${x.amount}`,
+      reference: x.reference,
+      date: new Date().toISOString().slice(0, 10),
+    }).then((r) => { if (!r.ok) console.warn('[mail] receipt send failed for', u.username, '-', r.error); }).catch(() => {});
+  }
   res.json({ ok: true, payment: paymentView(x), activated: what });
 });
 
@@ -1006,11 +1155,20 @@ app.get('/api/bots/:id/team', requireAuth, (req, res) => {
   });
 });
 
-app.post('/api/bots/:id/team/invite', requireAuth, (req, res) => {
+app.post('/api/bots/:id/team/invite', requireAuth, async (req, res) => {
   const bot = ownBot(req, res, 'owner');
   if (!bot) return;
   const r = team.invite(bot, req.user, req.body || {});
-  res.status(r.code).json(r.body);
+  if (r.code !== 200 || !r.body || !r.body.invite) return res.status(r.code).json(r.body);
+  // Email the invite. A mail failure must not fail the invite itself, so the
+  // link is always returned and the UI can fall back to copy-and-paste.
+  const sent = await authmail.sendInvite({ invite: r.body.invite, bot, inviter: req.user });
+  res.status(r.code).json({
+    ...r.body,
+    emailed: !!sent.ok,
+    emailError: sent.ok ? null : sent.error || null,
+    mailProvider: sent.provider || null,
+  });
 });
 
 app.delete('/api/bots/:id/team/invite/:inviteId', requireAuth, (req, res) => {
