@@ -1,50 +1,33 @@
-# Advanced WhatsApp Web features (beyond stock WhatsApp)
+# Two new site-wide features + PWA fix
 
-## 1. Bot bridge (lib/bot-shims/webBridge.js)
-- [x] Anti-delete archive: capture original text/media on revoke before clearing
-- [x] `deletedList` / `deletedClear` handlers
-- [x] `analytics` handler (volume, hour heatmap, weekday, top chats, media mix, response time)
+## 1. Plan
+- [x] Survey the site (routes, pages, modules) to avoid duplicating existing features
+- [x] Pick two features that apply to the whole site, not just the WhatsApp console
+  - Activity Timeline: account-wide audit trail + notification bell (bots, billing, storage, security, account)
+  - Command Palette: Ctrl/Cmd+K quick switcher for pages, actions, bots, drive files and activity
 
-## 2. Platform API
-- [x] lib/webconsole.js: deleted, deletedClear, analytics, translate methods
-- [x] app.js: routes for deleted / deleted/clear / analytics / translate
-- [x] translate provider ladder (gtx -> dict-chrome-ex -> MyMemory) + 1h cache
-- [x] fix: `statusPosts` declaration was swallowed by a comment (status rate-limit was broken)
+## 2. Backend
+- [x] lib/activity.js: per-user capped log, filters, unseen count, CSV, bot-event bridge
+- [x] lib/site-search.js: cross-entity search (bots, drive files, activity)
+- [x] app.js: /api/activity, /api/activity/seen, /api/activity/export.csv, /api/search
+- [x] app.js: record activity on login, register, password, bot lifecycle, payments, storage, keys, webhooks
 
-## 3. Frontend (public/js/wa-pro.js)
-- [x] Recovered-messages panel (anti-delete)
-- [x] Analytics dashboard with heatmap
-- [x] Broadcast dialog with throttling, progress and cancel
-- [x] Undo-send window on the composer
-- [x] Inline translate action on incoming messages
-- [x] Wire into index.html + app.js init
-- [x] single-panel guard so advanced dialogs do not stack
+## 3. Frontend
+- [x] public/js/activity.js: nav bell + #/activity page with filters, search, load more, CSV
+- [x] public/js/palette.js: Ctrl+K overlay with keyboard navigation and quick actions
+- [x] public/css/style.css: styles for the bell, timeline and palette
+- [x] public/index.html + app.js: load modules, register route, wire nav
 
-## 4. Verify
-- [x] node --check all changed files
-- [x] live API tests against running server (deleted, deleted/clear, analytics, translate, cache hit)
-- [x] UI smoke test via browser: 3 rail buttons render, all panels open, form hook + WAX hooks chained, no console errors
-- [x] commit + push (2818d81, then 96e89ba for the report)
+## 4. PWA fix (installed app was missing features)
+- [x] sw.js: precache every module, per-URL caching, bump VERSION to ladybug-v7
+- [x] manifest.webmanifest: orientation any + display_override
+- [x] pwa.js: update-available prompt, focus re-check, hide install button when standalone
 
-## 5. WhatsApp Web console themes (this round)
-- [x] add 13 new themes to public/js/wa-extras.js (24 total)
-- [x] group Appearance picker into Dark / Light sections (JS + CSS)
-- [x] verify all 24 render; click-test cyberpunk/nord/dracula/terminal/paper/lavender (bg+accent+look+mode correct)
-- [x] verify theme persists across reload
-- [x] commit + push (33b75dc)
+## 5. Verify
+- [x] node --check on every changed file
+- [x] unit tests: activity log, site search (71 assertions)
+- [x] Playwright: bell renders, activity page filters/search work, Ctrl+K opens and navigates, cache contains every module (63 checks)
+- [x] commit, push to GitHub
 
-## 6. Ladybug-Mini .play fix
-- [x] new commands/media/play.js (audio default, video with -v)
-- [x] remove 'play' alias from song.js
-- [x] commit + push (d688427)
-
-## 7. More WhatsApp Web automation
-- [x] lib/wa-book.js: auto settings now support readReceipts, rejectCalls, away{enabled,text,cooldownMin}, rules[]
-- [x] validation: boolean-only toggles, away text required, max 50 rules, dedupe by keyword, cleanText keeps line breaks
-- [x] lib/bot-shims/webBridge.js: auto-read via readMessages, call rejection, away + keyword reply engine with per-chat cooldowns
-- [x] lib/webconsole.js: automation GET/POST pass the new fields through
-- [x] public/js/wa-auto.js: rebuilt panel - 5 toggles, away auto-reply form, keyword rule CRUD
-- [x] public/css/style.css: sections, rule rows, dashed add-form
-- [x] mock-socket harness: rule hit, read receipt, away reply, cooldown, group skip, call reject, all-off = silent
-- [x] live API tests: set/get/persist, 400 on empty away, 400 on bad type, rule dedupe
-- [x] UI tests: 5 toggles render, add rule, toggle switch, save away all persist to API
+## 6. Docs
+- [x] FEATURES_SITE_WIDE.md

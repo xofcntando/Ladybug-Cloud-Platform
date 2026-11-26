@@ -33,7 +33,13 @@ const sessioninfo = require('./lib/sessioninfo');
 const devices = require('./lib/devices');
 const compression = require('compression');
 const storage = require('./lib/storage');
+const activity = require('./lib/activity');
+const siteSearch = require('./lib/site-search');
 const { securityHeaders, rateLimit } = require('./lib/security');
+
+// Bot lifecycle events are already emitted on the shared bus for webhooks; mirror them into
+// each owner's activity timeline.
+activity.ensureAttached();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -249,6 +255,7 @@ app.post('/api/auth/register', registerLimiter, (req, res) => {
   if (welcome) billing.grantBonus(user, billing.cfg.refFriendCoins, 'Welcome bonus (invited by ' + referrer.username + ')');
   db.addUser(user);
   req.session.userId = user.id;
+  activity.log(user.id, { type: 'account', title: 'Account created', detail: referrer ? 'Signed up with an invite from ' + referrer.username : 'Signed up for Ladybug Cloud.' });
   res.json({ ok: true, user: publicUser(user) });
 });
 
@@ -262,6 +269,7 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
   }
   db.updateUser(user.id, { lastLogin: new Date().toISOString() });
   req.session.userId = user.id;
+  activity.log(user.id, { type: 'security', title: 'Signed in', detail: 'From ' + String(req.ip || 'an unknown address').replace(/^::ffff:/, '') });
   res.json({ ok: true, user: publicUser(user) });
 });
 
@@ -301,6 +309,7 @@ app.post('/api/account/password', requireAuth, (req, res) => {
   db.updateUser(req.user.id, { passwordHash: bcrypt.hashSync(np, 10) });
   // Sign out every other device that uses this account; keep this one.
   const signedOut = sessionStore.destroyForUser(req.user.id, req.sessionID);
+  activity.log(req.user.id, { type: 'security', title: 'Password changed', detail: signedOut ? `${signedOut} other session(s) signed out.` : 'No other sessions were active.' });
   res.json({ ok: true, signedOutOthers: signedOut });
 });
 
@@ -326,6 +335,7 @@ app.put('/api/account/alerts', requireAuth, async (req, res) => {
     return res.status(400).json({ error: e.message });
   }
   db.updateUser(req.user.id, { alertWebhook: url.slice(0, 500) });
+  activity.log(req.user.id, { type: 'account', title: 'Crash alert webhook saved', detail: 'Alerts will be posted to your endpoint when a bot goes down or comes back.' });
   res.json({ ok: true, webhook: url });
 });
 
@@ -543,6 +553,42 @@ app.get('/api/messages/unread', requireAuth, (req, res) => {
   res.json({ unread: mine, adminUnread: admin, pendingPayments });
 });
 
+// ---------------------------------------------------------------- activity timeline
+// The account-wide audit trail. Every route is scoped to req.user.id, so one account can
+// never read another account's feed.
+app.get('/api/activity', requireAuth, (req, res) => {
+  const r = activity.list(req.user.id, {
+    limit: req.query.limit,
+    before: req.query.before,
+    type: req.query.type,
+    q: req.query.q,
+  });
+  res.json(r);
+});
+
+app.post('/api/activity/seen', requireAuth, (req, res) => {
+  const ids = req.body && Array.isArray(req.body.ids) ? req.body.ids.slice(0, 500) : null;
+  res.json(activity.markSeen(req.user.id, ids));
+});
+
+app.post('/api/activity/clear', requireAuth, (req, res) => {
+  res.json(activity.clear(req.user.id));
+});
+
+app.get('/api/activity/export.csv', requireAuth, (req, res) => {
+  const body = activity.csv(req.user.id, { type: req.query.type, q: req.query.q });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="ladybug-activity.csv"');
+  res.send(body);
+});
+
+// ---------------------------------------------------------------- command palette search
+const searchLimit = rateLimit({ windowMs: 60 * 1000, max: 120, message: 'Too many searches - slow down a moment.' });
+
+app.get('/api/search', requireAuth, searchLimit, (req, res) => {
+  res.json(siteSearch.search(req.user, req.query.q));
+});
+
 app.post('/api/messages', requireAuth, (req, res) => {
   const body = cleanMessage(req.body && req.body.body);
   if (!body) return res.status(400).json({ error: 'Write a message first.' });
@@ -693,6 +739,7 @@ app.post('/api/payments/submit', requireAuth, (req, res) => {
     id: uid(), userId: req.user.id, item, itemName: price.name, qty, currency, amount, amountUsd: usd,
     reference, status: 'pending', createdAt: Date.now(),
   });
+  activity.log(req.user.id, { type: 'billing', title: 'Payment submitted', detail: `${price.name}${qty > 1 ? ' x' + qty : ''} - ${currency} ${amount} (ref ${reference}). Waiting for approval.`, meta: { item, amount, currency } });
   res.json({ ok: true, payment: paymentView(rec) });
 });
 
@@ -712,6 +759,7 @@ app.post('/api/admin/payment-requests/:id/approve', requireAdmin, (req, res) => 
   x.status = 'approved';
   x.decidedAt = Date.now();
   notifyUser(u.id, `Payment confirmed (${x.currency} ${x.amount}, ref ${x.reference}). Activated: ${what}. Thank you!`);
+  activity.log(u.id, { type: 'billing', title: 'Payment approved', detail: `${x.itemName || x.item} - ${x.currency} ${x.amount}. Activated: ${what}.`, meta: { item: x.item, amount: x.amount, currency: x.currency } });
   db.save();
   res.json({ ok: true, payment: paymentView(x), activated: what });
 });
@@ -725,6 +773,7 @@ app.post('/api/admin/payment-requests/:id/reject', requireAdmin, (req, res) => {
   x.decidedAt = Date.now();
   x.reason = reason;
   notifyUser(x.userId, `We could not confirm your payment (${x.currency} ${x.amount}, ref ${x.reference}).${reason ? ' Reason: ' + reason : ''} Reply here if you need help.`);
+  activity.log(x.userId, { type: 'billing', title: 'Payment rejected', detail: `${x.itemName || x.item} - ${x.currency} ${x.amount}.${reason ? ' Reason: ' + reason : ''}` });
   db.save();
   res.json({ ok: true, payment: paymentView(x) });
 });

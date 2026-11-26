@@ -75,6 +75,7 @@ async function refreshUnread() {
     const total = (state.unread || 0) + (state.adminUnread || 0) + (state.pendingPayments || 0);
     n.textContent = total; n.style.display = total ? '' : 'none';
   }
+  if (window.LBACT) window.LBACT.refreshBell();
 }
 
 /* ---------------------------------------------------------------- wallet */
@@ -250,7 +251,15 @@ const routes = {
   '/developers': renderDevelopers,
   '/terms': renderTerms,
   '/web': renderWebConsole,
+  '/activity': renderActivity,
 };
+
+// The Activity page and the Command Palette live in their own modules so app.js stays readable.
+function renderActivity() {
+  if (!state.user) { location.hash = '#/login'; return; }
+  if (window.LBACT) return window.LBACT.render();
+  $('#view').innerHTML = '<div class="app"><div class="wrap"><div class="empty">Activity is unavailable right now.</div></div></div>';
+}
 
 async function navigate() {
   const hash = location.hash.replace('#', '') || '/';
@@ -281,6 +290,7 @@ function renderNav() {
     const coins = state.billing ? (state.billing.totalCoins != null ? state.billing.totalCoins : state.billing.coins) : state.user.coins || 0;
     el.innerHTML = `
       <a href="#/dashboard" class="nav-link hide-sm">Dashboard</a>
+      <a href="#/activity" class="nav-link hide-sm">Activity</a>
       <a href="#/storage" class="nav-link hide-sm">Storage</a>
       <a href="#/pay" class="nav-link hide-sm">Pay</a>
       <a href="#/support" class="nav-link hide-sm">Contact admin</a>
@@ -289,6 +299,8 @@ function renderNav() {
       <a href="#/status" class="nav-link hide-sm">Status</a>
       ${state.user.isAdmin ? '<a href="#/admin" class="nav-link hide-sm">Admin</a>' : ''}
       <span class="nav-sep hide-sm"></span>
+      <button class="act-chip" id="navPalBtn" type="button" title="Search everything (Ctrl+K)" aria-label="Open command palette"><span aria-hidden="true">&#128269;</span><kbd class="pal-kbd">Ctrl K</kbd></button>
+      <a href="#/activity" class="act-chip" id="navActBell" title="Activity"><span aria-hidden="true">&#128276;</span><span class="msg-n" id="navActN" style="display:none">0</span></a>
       <a href="#/support" class="msg-chip" title="Messages"><span aria-hidden="true">&#9993;</span><span class="msg-n" id="navMsgN" style="display:none">0</span></a>
       <a href="#/dashboard" class="coin-chip" id="navCoins" title="Your coins"><i class="coin-dot"></i><span id="navCoinsN">${coins}</span></a>
       <button class="btn btn-sm btn-ghost" id="logoutBtn" title="Signed in as ${esc(state.user.username)}">Log out</button>`;
@@ -298,6 +310,8 @@ function renderNav() {
       toast('Logged out');
       location.hash = '#/';
     };
+    const palBtn = $('#navPalBtn');
+    if (palBtn) palBtn.onclick = () => { if (window.LBPAL) window.LBPAL.toggle(); };
   } else {
     el.innerHTML = `
       <a href="#/pricing" class="nav-link hide-sm">Pricing</a>
