@@ -1496,6 +1496,7 @@ async function renderWebConsole() {
       window.WALBL ? { label: 'Labels…', run: () => WALBL.pick(jid) } : null,
       window.WAGAL ? { label: 'Media, docs and links', run: () => WAGAL.open(jid) } : null,
       window.WAX ? { label: 'Export chat (.txt)', run: () => WAX.exportChat(jid) } : null,
+      ...(window.WAGRP ? WAGRP.menuItems(c) : []),
       c.unread ? { label: 'Mark as read', run: () => { c.unread = 0; api(base + '/read', { method: 'POST', body: { jid } }).catch(() => {}); paintList(); } } : null,
     ]);
   }
@@ -1558,6 +1559,7 @@ async function renderWebConsole() {
     const body = box.querySelector('.wa-prof-body');
     if (!body) return;
     if (window.WACON) WACON.decorateInfo(box, c);
+    if (window.WAGRP) WAGRP.decorateInfo(box, c);
     const row = document.createElement('div');
     row.className = 'wa-con-act';
     row.innerHTML = [window.WAGAL ? '<button class="wa-btn ghost" data-gal>Media, docs and links</button>' : '', window.WALBL ? '<button class="wa-btn ghost" data-lbl>Labels</button>' : ''].join('');
@@ -1861,7 +1863,15 @@ async function renderWebConsole() {
   let searchT = null;
   $('#waSearch').oninput = (e) => { clearTimeout(searchT); searchT = setTimeout(() => { S.q = e.target.value.trim(); loadChats(); }, 250); };
 
-  $('#waNew').onclick = async () => {
+  $('#waNew').onclick = async (e) => {
+    // New chat / new group / join by invite link, all behind one button.
+    if (window.WACON && window.WAGRP) {
+      const r = e.currentTarget.getBoundingClientRect();
+      return popMenu(r.left - 60, r.bottom + 6, [
+        { label: '💬 New chat', run: () => WACON.open() },
+        ...WAGRP.newChatItems(),
+      ]);
+    }
     if (window.WACON) return WACON.open();
     const phone = prompt('Phone number with country code, e.g. 27821234567');
     if (!phone) return;
@@ -2095,7 +2105,7 @@ async function renderWebConsole() {
     catch (e) { console.error('[wa-rich]', e); }
   }
   { const ctx = { S, base, bot, api, toast, esc, dialog, popMenu, openChat, loadChats, paintList, paintTop, avatarHtml, hhmm, paintThread, setReply, $ };
-    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WASTAT', 'WACHAN', 'WAAUTO', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
+    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WAGRP', 'WASTAT', 'WACHAN', 'WAAUTO', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
   if (window.WAACC) {
     try { WAACC.init({ bot, api, toast, esc, dialog }); }
     catch (e) { console.error('[wa-accounts]', e); }

@@ -1789,3 +1789,19 @@ body[data-page="/web"] { overflow: hidden; }
 .terms-check { display: flex; gap: 9px; align-items: flex-start; font-size: 13.5px; color: var(--muted); margin: 4px 0 10px; line-height: 1.45; }
 .terms-check input { margin-top: 3px; flex: none; }
 .terms-check a { text-decoration: underline; }
+
+/* ---------------------------------------------------------------- groups (wa-groups.js) */
+.wa-app .wa-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.wa-app .wa-chip-row:empty { display: none; }
+.wa-app .wa-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 11px; border-radius: 999px; background: var(--wa-panel-2); color: var(--wa-text); font-size: 12.5px; max-width: 100%; }
+.wa-app .wa-chip button { border: 0; background: none; color: var(--wa-muted); font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 999px; cursor: pointer; }
+.wa-app .wa-chip button:hover { background: var(--wa-active); color: var(--wa-text); }
+/* participant rows in the settings dialog */
+.wa-app .wa-part { padding: 9px 0; gap: 10px; border-bottom: 1px solid var(--wa-line); }
+.wa-app .wa-part:last-child { border-bottom: 0; }
+.wa-app .wa-part > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wa-app .wa-part .wa-admin { flex: none; }
+.wa-app .wa-part .wa-pill { flex: none; letter-spacing: 1px; }
+/* the settings dialog can get tall - let it scroll instead of running off screen */
+.wa-app .wa-dialog .wa-con-act { margin: 8px 0; }
+.wa-app .wa-dialog textarea.wa-dialog-input { width: 100%; resize: vertical; font: inherit; }
