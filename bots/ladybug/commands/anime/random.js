@@ -9,8 +9,7 @@ const { getTempDir, deleteTempFile } = require('../../utils/tempManager');
 const { fitWhatsAppImage } = require('../../utils/fitImage');
 const config = require('../../config');
 
-const BASE = `${config.ladybugApiUrl}/api/anime/random`;
-const API_KEY = config.ladybugApiKey;
+const animeApi = require('../../utils/animeApi');
 
 module.exports = {
   name: 'random',
@@ -20,18 +19,9 @@ module.exports = {
   usage: 'random',
   execute: async (sock, msg, args, extra) => {
     try {
-      const url = `${BASE}?apikey=${API_KEY}`;
-      const response = await axios.get(url, {
-        headers: {
-          'User-Agent': 'LadybugMini/1.0',
-          'Accept': 'application/json'
-        },
-        timeout: 30000
-      });
-      
-      const result = response.data?.result;
+      const result = await animeApi.get('/v1/anime/random', '/api/anime/random');
       if (!result) {
-        throw new Error(response.data?.message || response.data?.error || 'Invalid API response: missing anime data');
+        throw new Error('Invalid API response: missing anime data');
       }
 
       // Image-style payload (same shape as neko/waifu) has no title

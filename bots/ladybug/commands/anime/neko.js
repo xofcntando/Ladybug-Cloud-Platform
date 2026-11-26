@@ -9,8 +9,7 @@ const { getTempDir, deleteTempFile } = require('../../utils/tempManager');
 const { fitWhatsAppImage } = require('../../utils/fitImage');
 const config = require('../../config');
 
-const BASE = `${config.ladybugApiUrl}/api/anime/neko`;
-const API_KEY = config.ladybugApiKey;
+const animeApi = require('../../utils/animeApi');
 
 module.exports = {
   name: 'neko',
@@ -20,18 +19,8 @@ module.exports = {
   usage: 'neko',
   execute: async (sock, msg, args, extra) => {
     try {
-      // Fetch JSON from API to get image URL
-      const url = `${BASE}?apikey=${API_KEY}`;
-      const response = await axios.get(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-          'Accept': 'application/json'
-        },
-        timeout: 30000
-      });
-      
-      // Ladybug returns { result: { url, image } }; older APIs returned a string URL
-      const result = response.data?.result;
+      // Fetch JSON from API to get image URL (current /v1 API, legacy fallback)
+      const result = await animeApi.get('/v1/anime/image', '/api/anime/neko', { category: 'neko' });
       const imageUrl = typeof result === 'string' ? result : (result?.url || result?.image);
       
       if (!imageUrl || typeof imageUrl !== 'string') {
