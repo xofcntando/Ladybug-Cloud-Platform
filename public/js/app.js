@@ -252,6 +252,7 @@ const routes = {
   '/terms': renderTerms,
   '/web': renderWebConsole,
   '/activity': renderActivity,
+  '/join': renderJoin,
 };
 
 // The Activity page and the Command Palette live in their own modules so app.js stays readable.
@@ -819,6 +820,75 @@ async function renderTerms() {
   if (back) back.onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.hash = '#/'; };
 }
 
+/* ---------------------------------------------------------------- join a shared bot */
+/**
+ * Landing page for an invite link (`#/join?invite=<token>`).
+ * Shows what the bot is and who is sharing it before anyone signs in, so the
+ * link is not a mystery. Accepting requires an account with the invited email.
+ */
+async function renderJoin() {
+  const m = /[?&]invite=([^&]+)/.exec(location.hash);
+  const tok = m ? decodeURIComponent(m[1]) : '';
+  if (!tok) { location.hash = '#/'; return; }
+
+  $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap">
+    <div class="card join-card"><div class="spin"></div><p class="sub" style="margin-top:12px">Checking this invite...</p></div>
+  </div></div></div>`;
+
+  let d;
+  try { d = await api('/api/team/invite/' + encodeURIComponent(tok)); }
+  catch (e) {
+    $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap">
+      <div class="card join-card">
+        <h2>Invite not valid</h2>
+        <p class="sub">${esc(e.message || 'This invite has expired or was cancelled.')}</p>
+        <a class="btn btn-primary" href="#/dashboard">Go to my bots</a>
+      </div></div></div></div>`;
+    return;
+  }
+
+  const roleBlurb = d.role === 'agent'
+    ? 'You can read the chats and reply as this bot.'
+    : 'You can read the chats but not send anything.';
+
+  const body = state.user
+    ? `<button class="btn btn-primary" id="joinGo" style="width:100%">Join ${esc(d.botName)}</button>
+       <div class="alert alert-error" id="joinErr" style="margin-top:12px"></div>
+       <p class="pay-note">Signed in as <b>${esc(state.user.username)}</b> (${esc(state.user.email || 'no email')}).</p>`
+    : `<a class="btn btn-primary" href="#/login?next=${encodeURIComponent('#/join?invite=' + tok)}" style="width:100%">Sign in to join</a>
+       <p class="pay-note">No account yet? <a href="#/register">Create one</a> with <b>${esc(d.email)}</b>, then open this link again.</p>`;
+
+  $('#view').innerHTML = `<div class="app"><div class="wrap"><div class="join-wrap">
+    <div class="card join-card">
+      <div class="tm-ava">${esc((d.botName || '?').charAt(0).toUpperCase())}</div>
+      <h2>${esc(d.botName)}</h2>
+      <div class="join-bot">${esc(d.ownerName)} invited you to help run this WhatsApp bot</div>
+      <div class="join-meta">
+        <div><span>Your access</span><b>${esc(d.roleLabel)}</b></div>
+        <div><span>Invited address</span><b>${esc(d.email)}</b></div>
+        <div><span>Expires</span><b>in ${fmtLeft(d.expiresAt - Date.now())}</b></div>
+      </div>
+      <p class="pay-note" style="text-align:left">${esc(roleBlurb)}</p>
+      ${body}
+    </div>
+  </div></div></div>`;
+
+  const go = $('#joinGo');
+  if (go) go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const r = await api('/api/team/accept', { method: 'POST', body: { token: tok } });
+      toast('You joined ' + d.botName);
+      try { const fresh = await api('/api/bots'); state.bots = fresh.bots; state.limit = fresh.limit; } catch (e) { /* dashboard will reload */ }
+      location.hash = '#/web?bot=' + encodeURIComponent(r.botId);
+    } catch (e) {
+      const el = $('#joinErr');
+      el.textContent = e.message; el.className = 'alert alert-error show';
+      go.disabled = false;
+    }
+  };
+}
+
 async function renderLogin() {
   if (state.user) return (location.hash = '#/dashboard');
   $('#view').innerHTML = authForm('login');
@@ -954,8 +1024,18 @@ function botCard(b) {
     ? `<div class="bot-cover"><div class="bot-cover-top"><span>Coins cover</span><b data-left="${b.coinPaidUntil}">${fmtLeft(b.coinPaidUntil - now)}</b></div>
          <div class="meter ok"><span style="width:${Math.max(4, Math.min(100, ((b.coinPaidUntil - now) / 86400000) * 100))}%"></span></div></div>`
     : '';
+  const t = b.team || {};
+  const role = b.role || 'owner';
+  const isOwner = role === 'owner';
+  const canSend = t.canSend !== false;
+  const roleChip = isOwner
+    ? ''
+    : `<span class="chip role-${role}" title="Your access level on this bot">${role === 'agent' ? 'Agent' : 'Viewer'}</span>`;
+  const teamChip = t.count > 1
+    ? `<span class="chip team-chip" title="${t.count} people can use this bot">${t.count} people</span>`
+    : '';
   return `
-  <div class="bot-card is-${b.status}" data-id="${b.id}">
+  <div class="bot-card is-${b.status} ${isOwner ? '' : 'is-shared'}" data-id="${b.id}">
     <div class="bot-top">
       <div class="bot-ava"><span>${initial}</span><i class="bot-dot ${b.status}"></i></div>
       <div class="bot-id">
@@ -964,6 +1044,7 @@ function botCard(b) {
       </div>
       ${badge(b.status)}
     </div>
+    ${(roleChip || teamChip) ? `<div class="bot-chips bot-chips-team">${roleChip}${teamChip}</div>` : ''}
     <div class="bot-hero">
       <div class="bot-hero-k">${live ? 'Online for' : 'Status'}</div>
       <div class="bot-hero-v">${uptime}</div>
@@ -982,17 +1063,22 @@ function botCard(b) {
     ${b.suspendedReason && !b.running ? `<div class="suspended">${esc(b.suspendedReason)}${/coins/i.test(b.suspendedReason) ? ' <a class="buy-link" href="#/pay?buy=coins100">Buy coins</a>' : ''}</div>` : ''}
     ${b.lastError ? `<div class="suspended is-err">${esc(b.lastError)}</div>` : ''}
     <div class="bot-actions">
-      ${live
-        ? `<button class="btn btn-danger-solid" data-act="stop">Stop</button>
-           <button class="btn" data-act="restart">Restart</button>`
-        : `<button class="btn btn-primary" data-act="start">${b.status === 'starting' || b.status === 'stopping' ? '...' : 'Start bot'}</button>`}
-      <button class="btn btn-ghost" data-act="web" title="Open WhatsApp for this bot number">WhatsApp</button>
-      <button class="btn btn-ghost" data-act="logs">Logs</button>
+      ${isOwner
+        ? (live
+          ? `<button class="btn btn-danger-solid" data-act="stop">Stop</button>
+             <button class="btn" data-act="restart">Restart</button>`
+          : `<button class="btn btn-primary" data-act="start">${b.status === 'starting' || b.status === 'stopping' ? '...' : 'Start bot'}</button>`)
+        : ''}
+      <button class="btn btn-ghost" data-act="web" title="Open WhatsApp for this bot number">${canSend ? 'WhatsApp' : 'View chats'}</button>
+      ${isOwner ? `<button class="btn btn-ghost" data-act="logs">Logs</button>` : ''}
       <button class="btn btn-ghost" data-act="uptime" title="Uptime history">Uptime</button>
-      <button class="btn btn-ghost" data-act="env" title="Custom bot settings (paid)">Settings${b.envCount ? ` (${b.envCount})` : ''}</button>
+      ${isOwner ? `<button class="btn btn-ghost" data-act="env" title="Custom bot settings (paid)">Settings${b.envCount ? ` (${b.envCount})` : ''}</button>` : ''}
+      <button class="btn btn-ghost" data-act="team" title="People with access to this bot">Team${t.count > 1 ? ` (${t.count})` : ''}</button>
       <span class="bot-actions-spacer"></span>
-      <button class="btn btn-ghost btn-icon" data-act="edit" title="Edit bot">Edit</button>
-      <button class="btn btn-ghost btn-icon btn-danger" data-act="delete" title="Delete bot">Delete</button>
+      ${isOwner
+        ? `<button class="btn btn-ghost btn-icon" data-act="edit" title="Edit bot">Edit</button>
+           <button class="btn btn-ghost btn-icon btn-danger" data-act="delete" title="Delete bot">Delete</button>`
+        : `<button class="btn btn-ghost btn-icon" data-act="leave" title="Leave this bot">Leave</button>`}
     </div>
   </div>`;
 }
@@ -1015,6 +1101,16 @@ async function handleBotAction(id, act, btn) {
   if (act === 'edit') return openEditBot(bot);
   if (act === 'env') return openEnvVars(bot);
   if (act === 'uptime') return openUptime(bot);
+  if (act === 'team') return openTeam(bot);
+  if (act === 'leave') {
+    if (!confirm(`Leave "${bot.name}"? You will lose access until you are invited again.`)) return;
+    try {
+      await api(`/api/bots/${id}/team/leave`, { method: 'POST' });
+      toast('You left this bot');
+      renderDashboard();
+    } catch (e) { toast(e.message, 'err'); }
+    return;
+  }
 
   if (act === 'delete') {
     if (!confirm(`Delete bot "${bot.name}"? This cannot be undone.`)) return;
@@ -2260,6 +2356,159 @@ function uptimeBars(items, labelFn) {
   const color = (p) => (p == null ? 'rgba(128,128,128,.25)' : p >= 99 ? '#22c55e' : p >= 90 ? '#eab308' : '#ef4444');
   return `<div style="display:flex;gap:3px;align-items:flex-end;height:46px">${items.map((x) =>
     `<div title="${esc(labelFn(x))}: ${x.pct == null ? 'no data' : x.pct + '%'}" style="flex:1;border-radius:3px;background:${color(x.pct)};height:${x.pct == null ? 20 : Math.max(18, x.pct)}%"></div>`).join('')}</div>`;
+}
+
+/* ---------------------------------------------------------------- team access */
+/**
+ * People with access to one bot. Owners can invite by email, change roles,
+ * transfer ownership and remove people; agents and viewers get a read-only list.
+ */
+async function openTeam(bot) {
+  let d;
+  try { d = await api(`/api/bots/${bot.id}/team`); } catch (e) { return toast(e.message, 'err'); }
+  const me = state.user ? state.user.id : null;
+  const canManage = d.summary && d.summary.canManage;
+
+  const avatar = (name) => `<span class="tm-ava">${esc((name || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
+  const roleTag = (role) => `<span class="chip role-${role}">${role === 'owner' ? 'Owner' : role === 'agent' ? 'Agent' : 'Viewer'}</span>`;
+
+  const memberRows = (d.members || []).map((m) => {
+    const self = m.userId === me ? ' <span class="tm-you">you</span>' : '';
+    const control = !canManage || m.isOwner
+      ? ''
+      : `<select class="input tm-role" data-user="${m.userId}">
+           <option value="viewer" ${m.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+           <option value="agent" ${m.role === 'agent' ? 'selected' : ''}>Agent</option>
+         </select>
+         <button class="btn btn-ghost btn-icon btn-danger" data-remove="${m.userId}" title="Remove from bot">&times;</button>`;
+    const transfer = canManage && !m.isOwner
+      ? `<button class="btn btn-ghost btn-sm" data-transfer="${m.userId}" title="Give this bot to them">Make owner</button>`
+      : '';
+    return `<div class="tm-row">
+      ${avatar(m.username)}
+      <div class="tm-who"><b>${esc(m.username)}${self}</b><span>${esc(m.email || 'no email on file')}</span></div>
+      ${roleTag(m.role)}
+      <div class="tm-ctl">${control}${transfer}</div>
+    </div>`;
+  }).join('');
+
+  const inviteRows = (d.invites || []).length
+    ? `<div class="tm-sub">Waiting to accept</div>` + d.invites.map((i) => `
+      <div class="tm-row tm-pending">
+        ${avatar(i.email)}
+        <div class="tm-who"><b>${esc(i.email)}</b><span>expires in ${fmtLeft(i.expiresAt - Date.now())}</span></div>
+        ${roleTag(i.role)}
+        <div class="tm-ctl">
+          <button class="btn btn-ghost btn-sm" data-copy="${esc(i.link)}">Copy link</button>
+          <button class="btn btn-ghost btn-icon btn-danger" data-revoke="${i.id}" title="Cancel invite">&times;</button>
+        </div>
+      </div>`).join('')
+    : '';
+
+  const inviteForm = canManage ? `
+    <div class="tm-invite">
+      <div class="tm-sub">Invite someone</div>
+      <div class="tm-invite-row">
+        <input class="input" id="tmEmail" type="email" placeholder="name@company.com" autocomplete="off" />
+        <select class="input" id="tmRole">
+          <option value="agent">Agent &mdash; can read and send</option>
+          <option value="viewer" selected>Viewer &mdash; read only</option>
+        </select>
+        <button class="btn btn-primary" id="tmSend">Invite</button>
+      </div>
+      <p class="pay-note">We do not send email. Copy the invite link and send it to them yourself. The link only works for that address and expires in 7 days.</p>
+      <div class="alert alert-error" id="tmErr"></div>
+    </div>` : `
+    <p class="pay-note">Only the owner can invite people or change roles.</p>`;
+
+  openModal(`
+    <h3>Team &mdash; ${esc(bot.name)}</h3>
+    <p class="sub">${canManage
+      ? 'Share this bot without sharing your password. Agents can read and reply; viewers can only read.'
+      : 'These are the people who can open this bot.'}</p>
+    <div class="tm-list">${memberRows}</div>
+    ${inviteRows}
+    ${inviteForm}
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Done</button>
+    </div>`);
+
+  const err = (msg) => { const e = $('#tmErr'); if (e) { e.textContent = msg; e.className = 'alert alert-error show'; } else toast(msg, 'err'); };
+
+  if (canManage) {
+    const send = $('#tmSend');
+    if (send) send.onclick = async () => {
+      const email = $('#tmEmail').value.trim();
+      if (!email) return err('Enter an email address.');
+      send.disabled = true;
+      try {
+        const r = await api(`/api/bots/${bot.id}/team/invite`, { method: 'POST', body: { email, role: $('#tmRole').value } });
+        toast(r.refreshed ? 'Invite refreshed' : 'Invite created');
+        openTeam(bot);
+        setTimeout(() => {
+          const link = r.invite && r.invite.link;
+          if (link) copyText(location.origin + link);
+        }, 60);
+      } catch (e) { err(e.message); send.disabled = false; }
+    };
+  }
+
+  $$('[data-remove]').forEach((b) => {
+    b.onclick = async () => {
+      const u = (d.members || []).find((m) => m.userId === b.dataset.remove);
+      if (!confirm(`Remove ${u ? u.username : 'this person'} from ${bot.name}?`)) return;
+      try { await api(`/api/bots/${bot.id}/team/${b.dataset.remove}`, { method: 'DELETE' }); toast('Removed'); openTeam(bot); }
+      catch (e) { err(e.message); }
+    };
+  });
+
+  $$('[data-transfer]').forEach((b) => {
+    b.onclick = async () => {
+      const u = (d.members || []).find((m) => m.userId === b.dataset.transfer);
+      if (!confirm(`Make ${u ? u.username : 'them'} the owner of ${bot.name}? You will stay on as an Agent.`)) return;
+      try {
+        await api(`/api/bots/${bot.id}/team/transfer`, { method: 'POST', body: { userId: b.dataset.transfer } });
+        toast('Ownership transferred'); closeModal(); renderDashboard();
+      } catch (e) { err(e.message); }
+    };
+  });
+
+  $$('.tm-role').forEach((sel) => {
+    sel.onchange = async () => {
+      try { await api(`/api/bots/${bot.id}/team/${sel.dataset.user}`, { method: 'PATCH', body: { role: sel.value } }); toast('Role updated'); }
+      catch (e) { err(e.message); openTeam(bot); }
+    };
+  });
+
+  $$('[data-revoke]').forEach((b) => {
+    b.onclick = async () => {
+      try { await api(`/api/bots/${bot.id}/team/invite/${b.dataset.revoke}`, { method: 'DELETE' }); toast('Invite cancelled'); openTeam(bot); }
+      catch (e) { err(e.message); }
+    };
+  });
+
+  $$('[data-copy]').forEach((b) => {
+    b.onclick = () => { copyText(location.origin + b.dataset.copy); toast('Invite link copied'); };
+  });
+}
+
+/** Clipboard with a fallback for browsers that block it outside a user gesture. */
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    return;
+  }
+  fallbackCopy(text);
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+  document.body.removeChild(ta);
 }
 
 async function openUptime(bot) {

@@ -35,6 +35,7 @@ const compression = require('compression');
 const storage = require('./lib/storage');
 const activity = require('./lib/activity');
 const siteSearch = require('./lib/site-search');
+const team = require('./lib/team');
 const { securityHeaders, rateLimit } = require('./lib/security');
 
 // Bot lifecycle events are already emitted on the shared bus for webhooks; mirror them into
@@ -143,8 +144,9 @@ function requireAdmin(req, res, next) {
   });
 }
 
-function botView(bot) {
+function botView(bot, viewer) {
   const st = bots.status(bot.id);
+  const t = viewer ? team.summary(bot, viewer) : null;
   return {
     id: bot.id,
     name: bot.name,
@@ -165,6 +167,10 @@ function botView(bot) {
     suspendedReason: bot.suspendedReason || null,
     envCount: bot.env ? Object.keys(bot.env).length : 0,
     resources: st.resources || null,
+    team: t,
+    owner: bot.userId,
+    shared: !!(t && t.isShared),
+    role: t ? t.role : null,
   };
 }
 
@@ -853,8 +859,12 @@ function referralTick() {
 
 // ---------------------------------------------------------------- user bots
 app.get('/api/bots', requireAuth, (req, res) => {
-  const list = db.botsForUser(req.user.id).map(botView);
-  res.json({ bots: list, limit: billing.botLimitFor(req.user) });
+  const list = team.botsForUser(req.user).map((b) => botView(b, req.user));
+  res.json({
+    bots: list,
+    limit: billing.botLimitFor(req.user),
+    sharedCount: list.filter((b) => b.role && b.role !== 'owner').length,
+  });
 });
 
 /**
@@ -945,18 +955,149 @@ app.post('/api/bots', requireAuth, (req, res) => {
   res.status(r.code).json(r.body);
 });
 
-function ownBot(req, res) {
+/**
+ * Load a bot the caller is allowed to touch.
+ *
+ * `need` is the lowest team role that may call this route:
+ *   'viewer' (default) — reading chats, contacts, media
+ *   'agent'            — sending, labelling, notes, follow-ups
+ *   'owner'            — settings, session, privacy, delete, team
+ * The resolved role is left on `req.botRole` so handlers can branch on it.
+ */
+function ownBot(req, res, need) {
   const bot = db.findBotById(req.params.id);
   if (!bot) {
     res.status(404).json({ error: 'Bot not found' });
     return null;
   }
-  if (bot.userId !== req.user.id && !req.user.isAdmin) {
-    res.status(403).json({ error: 'Not your bot' });
+  const role = team.roleFor(bot, req.user);
+  if (!role) {
+    res.status(403).json({ error: 'You do not have access to this bot' });
     return null;
   }
+  const want = need || 'viewer';
+  if (team.rank(role) < team.rank(want)) {
+    res.status(403).json({
+      error: want === 'owner'
+        ? 'Only the owner can change this bot'
+        : 'You have view-only access to this bot',
+      role,
+      need: want,
+    });
+    return null;
+  }
+  req.botRole = role;
   return bot;
 }
+
+// ---------------------------------------------------------------- team access
+// A bot can be shared with other accounts. `owner` is the creator, `agent` can
+// send and work the chats, `viewer` is read-only. Invites are one-time tokens.
+
+app.get('/api/bots/:id/team', requireAuth, (req, res) => {
+  const bot = ownBot(req, res);
+  if (!bot) return;
+  res.json({
+    members: team.listMembers(bot),
+    invites: team.roleFor(bot, req.user) === 'owner' ? team.listInvites(bot.id) : [],
+    summary: team.summary(bot, req.user),
+    roles: team.ROLES.map((r) => ({ id: r, label: team.LABEL[r] })),
+    max: team.MAX_MEMBERS,
+  });
+});
+
+app.post('/api/bots/:id/team/invite', requireAuth, (req, res) => {
+  const bot = ownBot(req, res, 'owner');
+  if (!bot) return;
+  const r = team.invite(bot, req.user, req.body || {});
+  res.status(r.code).json(r.body);
+});
+
+app.delete('/api/bots/:id/team/invite/:inviteId', requireAuth, (req, res) => {
+  const bot = ownBot(req, res, 'owner');
+  if (!bot) return;
+  const r = team.revokeInvite(bot, req.params.inviteId);
+  res.status(r.code).json(r.body);
+});
+
+app.patch('/api/bots/:id/team/:userId', requireAuth, (req, res) => {
+  const bot = ownBot(req, res, 'owner');
+  if (!bot) return;
+  const r = team.setRole(bot, req.user, req.params.userId, (req.body || {}).role);
+  res.status(r.code).json(r.body);
+});
+
+app.delete('/api/bots/:id/team/:userId', requireAuth, (req, res) => {
+  const bot = ownBot(req, res, 'owner');
+  if (!bot) return;
+  const r = team.remove(bot, req.user, req.params.userId);
+  res.status(r.code).json(r.body);
+});
+
+app.post('/api/bots/:id/team/transfer', requireAuth, (req, res) => {
+  const bot = ownBot(req, res, 'owner');
+  if (!bot) return;
+  const r = team.transfer(bot, req.user, (req.body || {}).userId);
+  res.status(r.code).json(r.body);
+});
+
+// Leave a bot you were invited to. The owner cannot leave their own bot.
+app.post('/api/bots/:id/team/leave', requireAuth, (req, res) => {
+  const bot = db.findBotById(req.params.id);
+  if (!bot) return res.status(404).json({ error: 'Bot not found' });
+  const role = team.roleFor(bot, req.user);
+  if (!role) return res.status(403).json({ error: 'You do not have access to this bot' });
+  if (bot.userId === req.user.id) return res.status(400).json({ error: 'You own this bot, so you cannot leave it.' });
+  const r = team.remove(bot, req.user, req.user.id);
+  res.status(r.code).json(r.body);
+});
+
+// What is waiting for me: pending invites addressed to my email.
+app.get('/api/team/invites', requireAuth, (req, res) => {
+  const mine = String(req.user.email || '').trim().toLowerCase();
+  if (!mine) return res.json({ invites: [] });
+  const t = Date.now();
+  const list = (db.data.invites || [])
+    .filter((i) => i.email === mine && !i.acceptedAt && !i.revokedAt && i.expiresAt > t)
+    .map((i) => {
+      const b = db.findBotById(i.botId);
+      const owner = b ? db.findUserById(b.userId) : null;
+      return {
+        id: i.id,
+        role: i.role,
+        roleLabel: team.LABEL[i.role] || 'Viewer',
+        expiresAt: i.expiresAt,
+        botId: i.botId,
+        botName: b ? b.name : 'Deleted bot',
+        ownerName: owner ? owner.username : '',
+        link: '/#/join?invite=' + i.token,
+      };
+    });
+  res.json({ invites: list });
+});
+
+app.post('/api/team/accept', requireAuth, (req, res) => {
+  const r = team.accept(req.user, (req.body || {}).token);
+  res.status(r.code).json(r.body);
+});
+
+// Preview an invite before signing in, so the join page can say what it is for.
+app.get('/api/team/invite/:token', (req, res) => {
+  const i = team.findInviteByToken(req.params.token);
+  if (!i) return res.status(404).json({ error: 'This invite is invalid or has expired.' });
+  const bot = db.findBotById(i.botId);
+  if (!bot) return res.status(404).json({ error: 'That bot no longer exists.' });
+  const owner = db.findUserById(bot.userId);
+  res.json({
+    ok: true,
+    email: i.email,
+    role: i.role,
+    roleLabel: team.LABEL[i.role],
+    botName: bot.name,
+    ownerName: owner ? owner.username : 'the owner',
+    expiresAt: i.expiresAt,
+  });
+});
 
 // Uptime history: everyone sees 24 hours, the paid pass unlocks 30 days.
 app.get('/api/bots/:id/uptime', requireAuth, (req, res) => {
@@ -1045,14 +1186,14 @@ function patchBotFor(bot, body) {
 }
 
 app.patch('/api/bots/:id', requireAuth, (req, res) => {
-  const bot = ownBot(req, res);
+  const bot = ownBot(req, res, 'owner');
   if (!bot) return;
   const r = patchBotFor(bot, req.body);
   res.status(r.code).json(r.body);
 });
 
 app.delete('/api/bots/:id', requireAuth, (req, res) => {
-  const bot = ownBot(req, res);
+  const bot = ownBot(req, res, 'owner');
   if (!bot) return;
   const r = deleteBotFor(bot);
   res.status(r.code).json(r.body);
@@ -1200,34 +1341,34 @@ app.delete('/api/session/pair/:id', requireAuth, (req, res) => {
 const webconsole = require('./lib/webconsole');
 app.get('/api/bots/:id/web/chats', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.chats(b, req, res); });
 app.get('/api/bots/:id/web/messages', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.messages(b, req, res); });
-app.post('/api/bots/:id/web/send', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.send(b, req, res); });
-app.post('/api/bots/:id/web/read', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.read(b, req, res); });
-app.post('/api/bots/:id/web/lookup', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.lookup(b, req, res); });
+app.post('/api/bots/:id/web/send', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.send(b, req, res); });
+app.post('/api/bots/:id/web/read', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.read(b, req, res); });
+app.post('/api/bots/:id/web/lookup', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.lookup(b, req, res); });
 app.get('/api/bots/:id/web/presence', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.presence(b, req, res); });
-app.post('/api/bots/:id/web/typing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.typing(b, req, res); });
-app.get('/api/bots/:id/web/avatar', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.avatar(b, req, res); });
-app.get('/api/bots/:id/web/profile', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.profile(b, req, res); });
-app.post('/api/bots/:id/web/profile', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.profileSet(b, req, res); });
-app.get('/api/bots/:id/web/privacy', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.privacy(b, req, res); });
-app.post('/api/bots/:id/web/privacy', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.privacySet(b, req, res); });
-app.get('/api/bots/:id/web/blocklist', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.blocklist(b, req, res); });
-app.post('/api/bots/:id/web/block', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.block(b, req, res); });
-app.post('/api/bots/:id/web/disappearing', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.disappearing(b, req, res); });
-app.post('/api/bots/:id/web/sendvoice', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendVoice(b, req, res); });
+app.post('/api/bots/:id/web/typing', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.typing(b, req, res); });
+app.get('/api/bots/:id/web/avatar', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.avatar(b, req, res); });
+app.get('/api/bots/:id/web/profile', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.profile(b, req, res); });
+app.post('/api/bots/:id/web/profile', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.profileSet(b, req, res); });
+app.get('/api/bots/:id/web/privacy', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.privacy(b, req, res); });
+app.post('/api/bots/:id/web/privacy', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.privacySet(b, req, res); });
+app.get('/api/bots/:id/web/blocklist', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.blocklist(b, req, res); });
+app.post('/api/bots/:id/web/block', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.block(b, req, res); });
+app.post('/api/bots/:id/web/disappearing', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.disappearing(b, req, res); });
+app.post('/api/bots/:id/web/sendvoice', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.sendVoice(b, req, res); });
 app.get('/api/bots/:id/web/search', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.search(b, req, res); });
 // Advanced: anti-delete archive, conversation analytics, inline translation
 app.get('/api/bots/:id/web/deleted', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deleted(b, req, res); });
-app.post('/api/bots/:id/web/deleted/clear', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deletedClear(b, req, res); });
+app.post('/api/bots/:id/web/deleted/clear', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.deletedClear(b, req, res); });
 app.get('/api/bots/:id/web/analytics', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.analytics(b, req, res); });
-app.post('/api/bots/:id/web/translate', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.translate(b, req, res); });
+app.post('/api/bots/:id/web/translate', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.translate(b, req, res); });
 // Chat Digest (local summary) and the private notes / follow-up book
 app.get('/api/bots/:id/web/digest', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.digest(b, req, res); });
-app.get('/api/bots/:id/web/notes', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.notes(b, req, res); });
-app.post('/api/bots/:id/web/notes', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.noteSave(b, req, res); });
-app.post('/api/bots/:id/web/notes/delete', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.noteDelete(b, req, res); });
-app.post('/api/bots/:id/web/followups', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.followupAdd(b, req, res); });
-app.put('/api/bots/:id/web/followups/:followupId', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.followupUpdate(b, req, res); });
-app.delete('/api/bots/:id/web/followups/:followupId', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.followupDelete(b, req, res); });
+app.get('/api/bots/:id/web/notes', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.notes(b, req, res); });
+app.post('/api/bots/:id/web/notes', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.noteSave(b, req, res); });
+app.post('/api/bots/:id/web/notes/delete', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.noteDelete(b, req, res); });
+app.post('/api/bots/:id/web/followups', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.followupAdd(b, req, res); });
+app.put('/api/bots/:id/web/followups/:followupId', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.followupUpdate(b, req, res); });
+app.delete('/api/bots/:id/web/followups/:followupId', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.followupDelete(b, req, res); });
 // status (stories), gallery, contacts, labels
 const ownWeb = (fn) => (req, res) => { const b = ownBot(req, res); if (b) webconsole[fn](b, req, res); };
 app.get('/api/bots/:id/web/status', requireAuth, ownWeb('statusList'));
@@ -1254,17 +1395,17 @@ app.post('/api/bots/:id/web/labels/assign', requireAuth, ownWeb('labelAssign'));
 app.put('/api/bots/:id/web/labels/:labelId', requireAuth, ownWeb('labelUpdate'));
 app.delete('/api/bots/:id/web/labels/:labelId', requireAuth, ownWeb('labelDelete'));
 app.get('/api/bots/:id/web/media', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.media(b, req, res); });
-app.post('/api/bots/:id/web/sendmedia', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.sendMedia(b, req, res); });
-app.post('/api/bots/:id/web/sendpoll', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.rich('sendPoll', ['jid', 'name', 'options', 'multi'])(b, req, res); });
-app.post('/api/bots/:id/web/sendlocation', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.rich('sendLocation', ['jid', 'lat', 'lng', 'name'])(b, req, res); });
-app.post('/api/bots/:id/web/sendcontact', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.rich('sendContact', ['jid', 'name', 'phone'])(b, req, res); });
+app.post('/api/bots/:id/web/sendmedia', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.sendMedia(b, req, res); });
+app.post('/api/bots/:id/web/sendpoll', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.rich('sendPoll', ['jid', 'name', 'options', 'multi'])(b, req, res); });
+app.post('/api/bots/:id/web/sendlocation', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.rich('sendLocation', ['jid', 'lat', 'lng', 'name'])(b, req, res); });
+app.post('/api/bots/:id/web/sendcontact', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.rich('sendContact', ['jid', 'name', 'phone'])(b, req, res); });
 const scheduled = require('./lib/scheduled');
 scheduled.start();
-app.get('/api/bots/:id/web/scheduled', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) res.json({ items: scheduled.list(b.id, req.query.jid ? String(req.query.jid) : undefined) }); });
-app.post('/api/bots/:id/web/scheduled', requireAuth, (req, res) => { const b = ownBot(req, res); if (!b) return; try { res.json(scheduled.create(b, req.user, req.body)); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } });
-app.delete('/api/bots/:id/web/scheduled/:jobId', requireAuth, (req, res) => { const b = ownBot(req, res); if (!b) return; try { res.json(scheduled.cancel(b, req.params.jobId)); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } });
-app.post('/api/bots/:id/web/delete', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deleteMsg(b, req, res); });
-app.post('/api/bots/:id/web/edit', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.editMsg(b, req, res); });
+app.get('/api/bots/:id/web/scheduled', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) res.json({ items: scheduled.list(b.id, req.query.jid ? String(req.query.jid) : undefined) }); });
+app.post('/api/bots/:id/web/scheduled', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (!b) return; try { res.json(scheduled.create(b, req.user, req.body)); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } });
+app.delete('/api/bots/:id/web/scheduled/:jobId', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (!b) return; try { res.json(scheduled.cancel(b, req.params.jobId)); } catch (e) { res.status(e.status || 400).json({ error: e.message }); } });
+app.post('/api/bots/:id/web/delete', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.deleteMsg(b, req, res); });
+app.post('/api/bots/:id/web/edit', requireAuth, (req, res) => { const b = ownBot(req, res, 'owner'); if (b) webconsole.editMsg(b, req, res); });
 app.get('/api/bots/:id/web/group', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.group(b, req, res); });
 // group management (write)
 app.post('/api/bots/:id/web/group/create', requireAuth, ownWeb('groupCreate'));
