@@ -1831,10 +1831,17 @@ if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'mods') {
   console.warn('\n[security] ADMIN_PASSWORD is not set (default "mods" in use). Set ADMIN_PASSWORD and ADMIN_USERNAME in your environment before going public.\n');
 }
 
-function shutdown() {
+async function shutdown() {
   console.log('\n[shutdown] stopping bots...');
   bots.stopAll();
   db.flush();
+  // Give the bots a moment to flush their history on SIGTERM, then push the newest
+  // snapshot to MongoDB before the client closes, so a redeploy cannot lose messages.
+  await new Promise((r) => setTimeout(r, 1500));
+  try {
+    const n = await require('./lib/chat-archive').flushAll(db.listBots().map((b) => b.id));
+    if (n) console.log(`[shutdown] mirrored message history for ${n} bot(s)`);
+  } catch (e) { /* best effort */ }
   mongoSync.close().finally(() => server.close(() => process.exit(0)));
   setTimeout(() => process.exit(0), 5000);
 }

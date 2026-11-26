@@ -376,9 +376,13 @@ New API routes: `GET /bots/{id}/web/media | group`, `POST /bots/{id}/web/delete 
 
 Chats and messages no longer vanish when you close the app or the bot restarts.
 
-- The bot saves a snapshot (last 150 messages per chat, up to 300 chats, contacts, deleted-message log) to `data_<botId>/webchat.json` a few seconds after anything changes, and again on shutdown. It is reloaded automatically on start.
+- The bot saves a snapshot (last 200 messages per chat, up to 300 chats, contacts, deleted-message log) to `data_<botId>/webchat.json` a few seconds after anything changes, and again on shutdown. It is reloaded automatically on start.
 - While the bot is **offline**, the console still lists chats and shows the saved conversations (read-only, with a banner). Sending needs the bot online.
-- With `MONGODB_URI` set, each snapshot is gzipped and mirrored to the `wachats` collection (at most once a minute per bot) and restored on boot when the disk is empty (Render free plan). Deleting a bot deletes its saved history.
+- With `MONGODB_URI` set, each snapshot is gzipped into the `wachats` collection. A running bot is mirrored every 20 seconds whenever its file changed, immediately when it stops, and once more on platform shutdown (after the bots have flushed), so a redeploy cannot lose the last minutes of messages.
+- On boot the **newest copy wins**: if the disk file is missing *or older* than the cloud copy, the cloud copy is restored. This matters on hosts with a persistent disk, where an old `webchat.json` would otherwise be served after a restart.
+- If the console is opened before the bot has started (fresh disk), it pulls the cloud copy on demand, so history appears straight away.
+- Deleting a bot deletes its saved history, locally and in MongoDB.
+- Without `MONGODB_URI` everything still works from the local file; the mirror is a no-op and the site starts normally even if MongoDB is unreachable.
 - Not saved: media files (only captions, metadata and small previews), so old photos/videos cannot be re-downloaded after a restart; contact statuses (they expire after 24 h anyway).
 - Code: `lib/bot-shims/webBridge.js` (persistence), `lib/chat-archive.js` (offline reads + MongoDB mirror).
 
