@@ -1209,6 +1209,17 @@ app.delete('/api/bots/:id/web/scheduled/:jobId', requireAuth, (req, res) => { co
 app.post('/api/bots/:id/web/delete', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deleteMsg(b, req, res); });
 app.post('/api/bots/:id/web/edit', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.editMsg(b, req, res); });
 app.get('/api/bots/:id/web/group', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.group(b, req, res); });
+// group management (write)
+app.post('/api/bots/:id/web/group/create', requireAuth, ownWeb('groupCreate'));
+app.post('/api/bots/:id/web/group/participants', requireAuth, ownWeb('groupParticipants'));
+app.post('/api/bots/:id/web/group/subject', requireAuth, ownWeb('groupSubject'));
+app.post('/api/bots/:id/web/group/desc', requireAuth, ownWeb('groupDesc'));
+app.post('/api/bots/:id/web/group/setting', requireAuth, ownWeb('groupSetting'));
+app.post('/api/bots/:id/web/group/leave', requireAuth, ownWeb('groupLeave'));
+app.post('/api/bots/:id/web/group/invite', requireAuth, ownWeb('groupInvite'));
+app.post('/api/bots/:id/web/group/invite/revoke', requireAuth, ownWeb('groupInviteRevoke'));
+app.post('/api/bots/:id/web/group/join', requireAuth, ownWeb('groupJoin'));
+app.post('/api/bots/:id/web/clear', requireAuth, ownWeb('clearChat'));
 app.get('/api/bots/:id/web/info', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.info(b, req, res); });
 app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.stream(b, req, res, req.user.id); });
 
