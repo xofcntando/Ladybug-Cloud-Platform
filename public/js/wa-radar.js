@@ -35,6 +35,15 @@
     return 'cool';
   }
 
+  /** Five-segment signal meter - filled segments track the heat band. */
+  function meter(sec) {
+    const band = heat(sec);
+    const n = band === 'hot' ? 5 : band === 'warm' ? 3 : 1;
+    let out = '<span class="wa-rad-meter ' + band + '">';
+    for (let i = 0; i < 5; i++) out += '<i class="' + (i < n ? 'on' : '') + '"></i>';
+    return out + '</span>';
+  }
+
   function row(r, kind) {
     const chat = C.S.chats.find((x) => x.jid === r.jid);
     const av = C.avatarHtml(chat || { name: r.name, jid: r.jid, isGroup: r.isGroup });
@@ -47,30 +56,53 @@
       </span>
       <span class="wa-rad-nums">
         <em class="wa-rad-wait ${heat(r.waiting)}">${human(r.waiting)}</em>
+        ${meter(r.waiting)}
         <small class="wa-sub">${reply != null ? 'replies in ' + human(reply) : 'no history'}</small>
       </span>
     </div>`;
+  }
+
+  /** The radar scope: rings, a rotating sweep and a few blips. It is decoration, but it is our decoration. */
+  function scope() {
+    return `<span class="wa-rad-scope" aria-hidden="true">
+        <span class="wa-rad-ring r1"></span><span class="wa-rad-ring r2"></span><span class="wa-rad-ring r3"></span>
+        <span class="wa-rad-sweep"></span>
+        <span class="wa-rad-blip b1"></span><span class="wa-rad-blip b2"></span><span class="wa-rad-blip b3"></span>
+        <span class="wa-rad-core"></span>
+      </span>`;
   }
 
   function draw(d) {
     const t = d.totals || {};
     const onMe = d.waitingOnMe || [];
     const onThem = d.waitingOnThem || [];
-    const body = d.offline
-      ? '<div class="chat-empty">The bot is offline, so there is no live history to read. Start it and try again.</div>'
-      : `
-      <div class="wa-rad-stats">
-        <div class="wa-rad-stat"><b>${t.onMe || 0}</b><small>waiting on you</small></div>
-        <div class="wa-rad-stat ${t.stale ? 'warn' : ''}"><b>${t.stale || 0}</b><small>over a day old</small></div>
-        <div class="wa-rad-stat"><b>${human(t.myReply)}</b><small>your usual reply</small></div>
-        <div class="wa-rad-stat"><b>${human(t.theirReply)}</b><small>their usual reply</small></div>
-      </div>
-      ${t.mySamples || t.theirSamples ? `<p class="wa-note">Based on ${t.mySamples || 0} of their messages you answered and ${t.theirSamples || 0} of yours they answered. Medians, so one slow night does not skew it.</p>` : ''}
+    if (d.offline) return '<div class="chat-empty">The bot is offline, so there is no live history to read. Start it and try again.</div>';
+
+    const hero = `<div class="wa-rad-hero">
+        ${scope()}
+        <span class="wa-rad-hero-txt">
+          <em>Ladybug exclusive</em>
+          <b>${t.onMe || 0} waiting on you</b>
+          <small>${t.stale ? `${t.stale} of them over a day old` : 'Nothing older than a day'}</small>
+        </span>
+      </div>`;
+
+    const stats = `<div class="wa-rad-stats">
+        <div class="wa-rad-stat" data-accent="cyan"><b>${t.onMe || 0}</b><small>waiting on you</small></div>
+        <div class="wa-rad-stat ${t.stale ? 'warn' : ''}" data-accent="amber"><b>${t.stale || 0}</b><small>over a day</small></div>
+        <div class="wa-rad-stat" data-accent="violet"><b>${human(t.myReply)}</b><small>your usual reply</small></div>
+        <div class="wa-rad-stat" data-accent="mint"><b>${human(t.theirReply)}</b><small>their usual reply</small></div>
+      </div>`;
+
+    const note = (t.mySamples || t.theirSamples)
+      ? `<p class="wa-note">Based on ${t.mySamples || 0} of their messages you answered and ${t.theirSamples || 0} of yours they answered. Medians, so one slow night does not skew it.</p>`
+      : '';
+
+    return `${hero}${stats}${note}
       <h4 class="wa-sec">Waiting on you <i>${onMe.length}</i></h4>
       ${onMe.length ? onMe.map((r) => row(r, 'me')).join('') : '<div class="chat-empty">Nothing is waiting on you. Inbox clear.</div>'}
       <h4 class="wa-sec">Waiting on them <i>${onThem.length}</i></h4>
       ${onThem.length ? onThem.map((r) => row(r, 'them')).join('') : '<div class="chat-empty">You have not left anyone hanging.</div>'}`;
-    return body;
   }
 
   async function open() {

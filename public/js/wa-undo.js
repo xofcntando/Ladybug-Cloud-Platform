@@ -31,7 +31,7 @@
     const secs = grace();
     if (!secs) return false;
     const uid = 'p' + (++seq);
-    const item = { uid, payload, reply, deadline: Date.now() + secs * 1000, sent: false };
+    const item = { uid, payload, reply, deadline: Date.now() + secs * 1000, total: secs * 1000, sent: false };
     queue.push(item);
     startTicker();
     repaint();
@@ -89,6 +89,20 @@
 
   /* ---------------------------------------------------------------- rendering */
   /** Pending bubbles live outside paintThread's innerHTML, so they are re-appended after every repaint. */
+  const RING_R = 13;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  /** The countdown ring: a cyan arc that unwinds as the grace window drains. */
+  function ringHtml(item) {
+    const left = Math.max(0, item.deadline - Date.now());
+    const frac = Math.max(0, Math.min(1, left / (item.total || 1)));
+    const off = (RING_C * (1 - frac)).toFixed(2);
+    return `<svg class="wa-air-ring" viewBox="0 0 32 32" aria-hidden="true">
+        <circle class="wa-air-track" cx="16" cy="16" r="${RING_R}"/>
+        <circle class="wa-air-arc" cx="16" cy="16" r="${RING_R}" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${off}"/>
+      </svg>`;
+  }
+
   function afterPaint(t) {
     if (!t || !queue.length) return;
     const mine = queue.filter((x) => x.payload.jid === C.S.jid);
@@ -98,14 +112,21 @@
       el.className = 'wa-msg me wa-pending';
       el.dataset.pending = item.uid;
       const left = Math.max(0, Math.ceil((item.deadline - Date.now()) / 1000));
-      el.innerHTML = `<div class="wa-pend-head">
-          <span class="wa-pend-dot"></span>Waiting ${left}s
-        </div>
-        ${item.reply ? `<div class="wa-pend-quote">${esc(String(item.reply.text || '').slice(0, 120))}</div>` : ''}
-        <div class="wa-pend-text">${esc(item.payload.text || '')}</div>
-        <div class="wa-pend-act">
-          <button class="wa-pend-btn" data-now>Send now</button>
-          <button class="wa-pend-btn danger" data-cancel>Cancel</button>
+      el.innerHTML = `<div class="wa-airlock">
+          <div class="wa-air-top">
+            <span class="wa-air-ringwrap">${ringHtml(item)}<b class="wa-air-secs">${left}</b></span>
+            <span class="wa-air-meta">
+              <em class="wa-air-tag">On hold</em>
+              <small>Nothing has been sent yet. Pull it back any time.</small>
+            </span>
+          </div>
+          ${item.reply ? `<div class="wa-air-quote">${esc(String(item.reply.text || '').slice(0, 120))}</div>` : ''}
+          <div class="wa-air-text">${esc(item.payload.text || '')}</div>
+          <div class="wa-air-act">
+            <button class="wa-air-btn danger" data-cancel>Cancel</button>
+            <button class="wa-air-btn primary" data-now>Send now</button>
+          </div>
+          <span class="wa-air-drain"><i style="width:${Math.round(100 * Math.max(0, (item.deadline - Date.now()) / (item.total || 1)))}%"></i></span>
         </div>`;
       el.querySelector('[data-cancel]').onclick = (e) => { e.stopPropagation(); cancel(item.uid); };
       el.querySelector('[data-now]').onclick = (e) => { e.stopPropagation(); sendNow(item.uid); };
@@ -114,7 +135,7 @@
     t.scrollTop = t.scrollHeight;
   }
 
-  /** Cheap in-place countdown update so the number ticks without a full repaint. */
+  /** Cheap in-place tick so the ring, number and drain bar move without a full repaint. */
   function paintCountdowns() {
     const nodes = document.querySelectorAll('.wa-pending[data-pending]');
     if (!nodes.length) return;
@@ -122,9 +143,14 @@
     nodes.forEach((el) => {
       const item = queue.find((x) => x.uid === el.dataset.pending);
       if (!item) { el.remove(); return; }
-      const head = el.querySelector('.wa-pend-head');
-      const left = Math.max(0, Math.ceil((item.deadline - now) / 1000));
-      if (head) head.innerHTML = `<span class="wa-pend-dot"></span>Waiting ${left}s`;
+      const left = Math.max(0, item.deadline - now);
+      const frac = Math.max(0, Math.min(1, left / (item.total || 1)));
+      const secs = el.querySelector('.wa-air-secs');
+      if (secs) secs.textContent = Math.max(0, Math.ceil(left / 1000));
+      const arc = el.querySelector('.wa-air-arc');
+      if (arc) arc.setAttribute('stroke-dashoffset', (RING_C * (1 - frac)).toFixed(2));
+      const drain = el.querySelector('.wa-air-drain i');
+      if (drain) drain.style.width = Math.round(100 * frac) + '%';
     });
   }
 
