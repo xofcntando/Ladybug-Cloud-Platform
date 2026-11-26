@@ -1533,7 +1533,11 @@ const handlers = {
       if (!list.length) continue;
       const c = chats.get(jid);
       const name = (c && c.name) || contacts.get(jid) || '+' + num(jid);
-      const usable = list.filter((m) => m.ts && m.ts >= from && m.type !== 'reaction' && !m.deleted);
+      // Skip reactions, deletions, and protocol noise (LID-migration / sender-key
+      // notices land as type 'other' with no text and no media - they are not
+      // conversations and must never show up as "waiting on a reply").
+      const usable = list.filter((m) => m.ts && m.ts >= from && m.type !== 'reaction' && !m.deleted
+        && !(m.type === 'other' && !String(m.text || '').trim()));
       if (!usable.length) continue;
 
       const myGaps = [], theirGaps = [];
