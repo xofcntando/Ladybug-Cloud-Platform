@@ -2139,6 +2139,41 @@ async function renderWebConsole() {
   }
   await loadChats();
 
+  // Deep link from the installed app's "All features" sheet: #/web?bot=<id>&tool=<name>
+  // opens that console tool straight away. The tool is stripped from the hash first so a
+  // reload (or going back) does not pop the panel open again.
+  {
+    const m = /[?&]tool=([^&]+)/.exec(location.hash);
+    if (m) {
+      const tool = decodeURIComponent(m[1]);
+      try { history.replaceState(null, '', location.pathname + location.search + '#/web?bot=' + encodeURIComponent(bot.id)); } catch (e) { /* ignore */ }
+      const needChat = (fn) => (S.jid ? fn(S.jid) : (window.WACON ? WACON.open() : null));
+      const TOOL = {
+        digest: () => window.WADIG && WADIG.open(),
+        notes: () => window.WACRM && WACRM.open(),
+        translate: () => window.WATR && WATR.open(),
+        radar: () => window.WRADAR && WRADAR.open(),
+        deleted: () => window.WAPRO && WAPRO.openDeleted(),
+        analytics: () => window.WAPRO && WAPRO.openAnalytics(),
+        broadcast: () => window.WAPRO && WAPRO.openBroadcast(),
+        labels: () => window.WALBL && WALBL.manage(),
+        gallery: () => window.WAGAL && needChat((j) => WAGAL.open(j)),
+        contacts: () => window.WACON && WACON.open(),
+        groups: () => window.WAGRP && WAGRP.openCreate(),
+        stories: () => window.WASTAT && WASTAT.open(),
+        channels: () => window.WACHAN && WACHAN.open(),
+        auto: () => window.WAAUTO && WAAUTO.open(),
+        appearance: () => window.WAX && WAX.openAppearance(),
+        accounts: () => window.WAACC && WAACC.open(),
+      };
+      setTimeout(() => {
+        const fn = TOOL[tool];
+        if (!fn) { toast('That tool is not available on this build.', 'err'); return; }
+        try { fn(); } catch (e) { console.error('[tool:' + tool + ']', e); }
+      }, 350);
+    }
+  }
+
   // live updates
   webES = new EventSource(base + '/stream');
   for (const k of ['WACON', 'WASTAT', 'WACHAN']) { if (window[k] && window[k].bindStream) { try { window[k].bindStream(webES); } catch (e) { console.error('[' + k + ']', e); } } }

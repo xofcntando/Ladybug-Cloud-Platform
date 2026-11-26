@@ -140,7 +140,7 @@ const PASS = process.env.LB_PASS || 'secret123';
   const sw = await ctx.request.get(BASE + '/sw.js');
   const swText = await sw.text();
   ok('sw.js is served', sw.ok(), String(sw.status()));
-  ok('cache version bumped', /ladybug-v7/.test(swText));
+  ok('cache version bumped', /ladybug-v8/.test(swText));
   ok('precache is fault tolerant', /cache\.add\(/.test(swText) && !/addAll\(SHELL\)/.test(swText));
   for (const m of ['wa-groups', 'wa-undo', 'wa-radar', 'wa-pro', 'wa-digest', 'wa-crm', 'wa-translate', 'activity', 'palette']) {
     ok('shell precaches ' + m + '.js', swText.includes('/js/' + m + '.js'));
@@ -167,7 +167,7 @@ const PASS = process.env.LB_PASS || 'secret123';
     }
     return { keys, urls };
   });
-  ok('service worker cache exists', cacheInfo.keys.some((k) => /ladybug-v7/.test(k)), JSON.stringify(cacheInfo.keys));
+  ok('service worker cache exists', cacheInfo.keys.some((k) => /ladybug-v8/.test(k)), JSON.stringify(cacheInfo.keys));
   for (const m of ['/js/wa-groups.js', '/js/wa-undo.js', '/js/wa-radar.js', '/js/wa-pro.js', '/js/wa-digest.js', '/js/wa-crm.js', '/js/wa-translate.js', '/js/activity.js', '/js/palette.js']) {
     ok('cached for offline: ' + m, cacheInfo.urls.includes(m), String(cacheInfo.urls.length) + ' urls cached');
   }

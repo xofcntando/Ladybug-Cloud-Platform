@@ -2329,3 +2329,166 @@ body.pal-open { overflow: hidden; }
 .pwa-toast .pwa-toast-x { background: transparent; color: var(--muted); padding: 4px 8px; font-size: 16px; }
 .pal-kbd { white-space: nowrap; font-family: var(--mono); font-size: 10px; letter-spacing: .02em; padding: 2px 6px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--muted); background: var(--surface-2); }
 @media (max-width: 900px) { .pal-kbd { display: none; } }
+
+/* ================================================================
+   INSTALLED APP SHELL  (html[data-app="1"])
+   When Ladybug Cloud runs as an installed app it does NOT reuse the
+   website chrome. It gets its own shell: a gradient app bar, a bottom
+   tab bar with a sliding pill, and an "All features" sheet that holds
+   every page and every WhatsApp console tool. The website keeps its
+   normal top navigation. Built by /js/appmode.js.
+   ================================================================ */
+
+/* the website nav is replaced by the app bar + tab bar */
+html[data-app="1"] .nav { display: none; }
+html[data-app="1"] .wrap { max-width: 100%; }
+html[data-app-chrome="1"] body { padding-top: 60px; padding-bottom: 84px; }
+
+/* ---------------- app bar ---------------- */
+.appbar {
+  position: fixed; inset: 0 0 auto 0; z-index: 90;
+  display: flex; align-items: center; gap: 10px;
+  height: 60px; padding: 0 14px;
+  padding-top: env(safe-area-inset-top, 0);
+  background:
+    linear-gradient(180deg, rgba(47, 107, 255, .18), rgba(5, 10, 26, 0) 70%),
+    rgba(6, 12, 30, .92);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 1px solid rgba(90, 130, 255, .22);
+  box-shadow: 0 12px 34px -18px rgba(0, 0, 0, .9);
+}
+.appbar[hidden], .apptabs[hidden] { display: none !important; }
+.appbar-brand { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; }
+.appbar-brand:hover { text-decoration: none; }
+.appbar-brand img { width: 26px; height: 26px; border-radius: 8px; flex: none; box-shadow: 0 0 0 1px rgba(120, 160, 255, .3); }
+.appbar-brand span {
+  font-family: var(--display); font-weight: 700; font-size: 16.5px; letter-spacing: -.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: linear-gradient(92deg, #ffffff, #a9c4ff 55%, #7ef0d0);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.appbar-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.appbar-btn {
+  position: relative; display: inline-grid; place-items: center;
+  width: 38px; height: 38px; border: 1px solid transparent; border-radius: 12px;
+  background: transparent; color: var(--text); font-size: 17px; line-height: 1;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.appbar-btn svg { display: block; }
+.appbar-btn:hover, .appbar-btn:focus-visible { background: rgba(90, 130, 255, .16); border-color: rgba(90, 130, 255, .3); outline: none; }
+.appbar-dot {
+  position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%;
+  background: #ff5f52; box-shadow: 0 0 0 2px rgba(6, 12, 30, .95);
+}
+.appbar-dot[hidden] { display: none; }
+
+/* ---------------- bottom tab bar ---------------- */
+.apptabs {
+  position: fixed; inset: auto 0 0 0; z-index: 90;
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: rgba(6, 12, 30, .94);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-top: 1px solid rgba(90, 130, 255, .22);
+  box-shadow: 0 -14px 34px -22px rgba(0, 0, 0, .95);
+}
+.apptab {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 2px 5px; border: 0; border-radius: 12px; background: transparent;
+  color: var(--muted); font: 500 10.5px/1 var(--sans); letter-spacing: .01em;
+  cursor: pointer; transition: color .15s, background .15s;
+}
+.apptab i { display: grid; place-items: center; line-height: 1; font-style: normal; opacity: .72; transition: opacity .15s, transform .15s; }
+.apptab i svg { display: block; }
+.apptab span { white-space: nowrap; }
+.apptab:hover { color: var(--text); }
+.apptab.on { color: #cfe0ff; background: linear-gradient(180deg, rgba(47, 107, 255, .22), rgba(47, 107, 255, .04)); }
+.apptab.on i { opacity: 1; transform: translateY(-1px); }
+.apptab.on::after {
+  content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 18px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--brand), #7ef0d0);
+}
+
+/* ---------------- all-features sheet ---------------- */
+.appsheet {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(2, 6, 16, .62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0; visibility: hidden; transition: opacity .2s, visibility .2s;
+}
+.appsheet.show { opacity: 1; visibility: visible; }
+.appsheet-card {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: 720px; max-height: 88vh;
+  background: linear-gradient(180deg, #0b1533, #070e22 60%);
+  border: 1px solid rgba(90, 130, 255, .26);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -24px 70px -20px rgba(0, 0, 0, .95);
+  transform: translateY(26px); transition: transform .24s cubic-bezier(.2, .8, .3, 1);
+  overflow: hidden;
+}
+.appsheet.show .appsheet-card { transform: translateY(0); }
+.appsheet-head {
+  display: flex; align-items: flex-start; gap: 12px; flex: none;
+  padding: 18px 18px 14px; border-bottom: 1px solid rgba(90, 130, 255, .16);
+}
+.appsheet-head b { display: block; font-family: var(--display); font-size: 19px; letter-spacing: -.02em; }
+.appsheet-head small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.appsheet-x {
+  margin-left: auto; flex: none; width: 34px; height: 34px; border-radius: 10px;
+  border: 1px solid rgba(90, 130, 255, .24); background: rgba(90, 130, 255, .1);
+  color: var(--text); font-size: 14px; cursor: pointer;
+}
+.appsheet-x:hover { background: rgba(90, 130, 255, .2); }
+.appsheet-body {
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 4px 18px calc(26px + env(safe-area-inset-bottom, 0px));
+}
+.appsheet-group { padding-top: 16px; }
+.appsheet-group h3 {
+  font-family: var(--sans); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--faint); margin: 0 0 9px;
+}
+.appsheet-hint { margin: -4px 0 10px; font-size: 12px; color: var(--faint); }
+.appsheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.apptile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 11px 12px; text-align: left; cursor: pointer;
+  border: 1px solid rgba(90, 130, 255, .16); border-radius: 14px;
+  background: linear-gradient(180deg, rgba(21, 36, 77, .75), rgba(10, 19, 48, .75));
+  color: var(--text); font-family: var(--sans);
+  transition: border-color .15s, background .15s, transform .08s;
+}
+.apptile:hover, .apptile:focus-visible { border-color: rgba(90, 130, 255, .48); background: linear-gradient(180deg, rgba(31, 52, 104, .9), rgba(13, 24, 58, .9)); outline: none; }
+.apptile:active { transform: scale(.985); }
+.apptile i {
+  display: grid; place-items: center; width: 30px; height: 30px; margin-bottom: 5px;
+  border-radius: 9px; font-size: 15px; font-style: normal;
+  background: linear-gradient(140deg, rgba(47, 107, 255, .34), rgba(126, 240, 208, .18));
+  box-shadow: inset 0 0 0 1px rgba(120, 160, 255, .22);
+}
+.apptile b { font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; }
+.apptile small { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+body.appsheet-open { overflow: hidden; }
+
+/* desktop / tablet: the sheet becomes a centred card */
+@media (min-width: 760px) {
+  .appsheet { align-items: center; padding: 24px; }
+  .appsheet-card { border-radius: 22px; max-height: 82vh; }
+}
+
+/* the WhatsApp console is full-bleed, so the app bar and tabs step aside */
+html[data-app="1"] body:has(.wa-app) { padding-top: 0; padding-bottom: 0; }
+
+/* keep the install prompt clear of the tab bar */
+html[data-app="1"] .pwa-install { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+
+@media (display-mode: standalone) {
+  .apptabs { padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); }
+}

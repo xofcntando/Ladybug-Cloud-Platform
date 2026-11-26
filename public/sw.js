@@ -7,7 +7,7 @@
      abort the whole install (the old code used addAll(), which is all-or-nothing).
    - Every page module in public/js is listed below; keep this list in sync with index.html.
 */
-const VERSION = 'ladybug-v7';
+const VERSION = 'ladybug-v8';
 
 const SHELL = [
   '/',
@@ -21,6 +21,7 @@ const SHELL = [
   '/js/terms.js',
   '/js/app.js',
   '/js/pwa.js',
+  '/js/appmode.js',
   '/js/activity.js',
   '/js/palette.js',
   // WhatsApp web console modules
