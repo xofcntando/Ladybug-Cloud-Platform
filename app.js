@@ -1220,6 +1220,8 @@ app.post('/api/bots/:id/web/group/invite', requireAuth, ownWeb('groupInvite'));
 app.post('/api/bots/:id/web/group/invite/revoke', requireAuth, ownWeb('groupInviteRevoke'));
 app.post('/api/bots/:id/web/group/join', requireAuth, ownWeb('groupJoin'));
 app.post('/api/bots/:id/web/clear', requireAuth, ownWeb('clearChat'));
+// Response Radar - who owes whom a reply (not a WhatsApp feature)
+app.get('/api/bots/:id/web/radar', requireAuth, ownWeb('radar'));
 app.get('/api/bots/:id/web/info', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.info(b, req, res); });
 app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.stream(b, req, res, req.user.id); });
 

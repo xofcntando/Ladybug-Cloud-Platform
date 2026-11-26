@@ -1509,6 +1509,84 @@ const handlers = {
     emit('cleared', { jid });
     return { ok: true, jid };
   },
+  /* ------------------------------------------------------------------ Response Radar
+   * Not a WhatsApp feature: for every chat, work out who spoke last (so who owes a reply), how long
+   * that has been waiting, and each side's typical reply time. Pure arithmetic over the in-memory
+   * ring, so it costs nothing and never touches WhatsApp. */
+  radar({ days = 30 } = {}) {
+    const span = Math.min(90, Math.max(1, Number(days) || 30));
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - span * 86400;
+
+    const median = (arr) => {
+      if (!arr.length) return null;
+      const s = arr.slice().sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+    };
+
+    const waitingOnMe = [];
+    const waitingOnThem = [];
+    let myGapsAll = [], theirGapsAll = [];
+
+    for (const [jid, list] of msgs) {
+      if (!list.length) continue;
+      const c = chats.get(jid);
+      const name = (c && c.name) || contacts.get(jid) || '+' + num(jid);
+      const usable = list.filter((m) => m.ts && m.ts >= from && m.type !== 'reaction' && !m.deleted);
+      if (!usable.length) continue;
+
+      const myGaps = [], theirGaps = [];
+      for (let i = 0; i < usable.length; i++) {
+        const m = usable[i];
+        // find the first message from the other side after this one
+        for (let j = i + 1; j < usable.length; j++) {
+          const n = usable[j];
+          if (n.fromMe === m.fromMe) continue;
+          const gap = n.ts - m.ts;
+          if (gap <= 0) break;
+          if (gap < 7 * 86400) (m.fromMe ? theirGaps : myGaps).push(gap);
+          break;
+        }
+      }
+
+      const last = usable[usable.length - 1];
+      const waiting = Math.max(0, now - last.ts);
+      const row = {
+        jid, name, isGroup: isGroup(jid),
+        waiting, lastTs: last.ts, lastText: String(last.text || '').slice(0, 90), lastFromMe: !!last.fromMe,
+        myReply: median(myGaps), theirReply: median(theirGaps),
+        mySamples: myGaps.length, theirSamples: theirGaps.length,
+        messages: usable.length,
+      };
+      // ignore chats we ourselves just answered or that are only a few minutes old
+      if (last.fromMe) waitingOnThem.push(row);
+      else waitingOnMe.push(row);
+      myGapsAll = myGapsAll.concat(myGaps);
+      theirGapsAll = theirGapsAll.concat(theirGaps);
+    }
+
+    const byWait = (a, b) => b.waiting - a.waiting;
+    waitingOnMe.sort(byWait);
+    waitingOnThem.sort(byWait);
+
+    return {
+      ok: true, days: span, generatedAt: now,
+      waitingOnMe: waitingOnMe.slice(0, 60),
+      waitingOnThem: waitingOnThem.slice(0, 60),
+      totals: {
+        chats: waitingOnMe.length + waitingOnThem.length,
+        onMe: waitingOnMe.length,
+        onThem: waitingOnThem.length,
+        // anything waiting on us for more than a day is the number worth acting on
+        stale: waitingOnMe.filter((r) => r.waiting > 86400).length,
+        myReply: median(myGapsAll),
+        theirReply: median(theirGapsAll),
+        mySamples: myGapsAll.length,
+        theirSamples: theirGapsAll.length,
+      },
+    };
+  },
   me() { return { me: sock && sock.user ? sock.user : null }; },
 
   /* ------------------------------------------------------------------ profile + privacy */

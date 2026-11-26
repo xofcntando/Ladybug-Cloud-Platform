@@ -1805,3 +1805,40 @@ body[data-page="/web"] { overflow: hidden; }
 /* the settings dialog can get tall - let it scroll instead of running off screen */
 .wa-app .wa-dialog .wa-con-act { margin: 8px 0; }
 .wa-app .wa-dialog textarea.wa-dialog-input { width: 100%; resize: vertical; font: inherit; }
+
+/* ---------------------------------------------------------------- Undo Send (wa-undo.js) */
+.wa-app .wa-pending { border: 1px dashed var(--wa-accent); opacity: .95; }
+.wa-app .wa-pend-head { display: flex; align-items: center; gap: 7px; font-size: 11.5px; letter-spacing: .3px; text-transform: uppercase; color: var(--wa-accent-2); margin-bottom: 5px; }
+.wa-app .wa-pend-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wa-accent); animation: waPend 1s ease-in-out infinite; }
+@keyframes waPend { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.wa-app .wa-pend-quote { border-left: 3px solid var(--wa-accent); padding: 3px 0 3px 8px; margin-bottom: 5px; font-size: 12.5px; color: var(--wa-muted); }
+.wa-app .wa-pend-text { white-space: pre-wrap; word-break: break-word; }
+.wa-app .wa-pend-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.wa-app .wa-pend-btn { border: 0; background: var(--wa-panel-2); color: var(--wa-text); font-size: 12.5px; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.wa-app .wa-pend-btn:hover { background: var(--wa-active); }
+.wa-app .wa-pend-btn.danger { color: #ef6c5b; }
+
+/* ---------------------------------------------------------------- Response Radar (wa-radar.js) */
+.wa-app .wa-radar-btn { position: relative; }
+.wa-app .wa-rad-badge { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--wa-accent); color: #fff; font-size: 10.5px; font-style: normal; font-weight: 700; line-height: 16px; text-align: center; }
+.wa-app .wa-rad-badge.stale { background: #ef6c5b; }
+.wa-app .wa-rad-sel { background: var(--wa-panel); color: var(--wa-text); border: 1px solid var(--wa-line); border-radius: 8px; padding: 5px 8px; font-size: 13px; outline: 0; }
+.wa-app .wa-rad-body { max-height: 54vh; overflow-y: auto; margin: 6px 0; }
+.wa-app .wa-rad-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 4px; }
+.wa-app .wa-rad-stat { background: var(--wa-panel-2); border-radius: 10px; padding: 10px 8px; text-align: center; }
+.wa-app .wa-rad-stat b { display: block; font-size: 17px; line-height: 1.2; }
+.wa-app .wa-rad-stat small { display: block; font-size: 11px; color: var(--wa-muted); margin-top: 2px; }
+.wa-app .wa-rad-stat.warn b { color: #ef6c5b; }
+.wa-app .wa-rad-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--wa-line); cursor: pointer; }
+.wa-app .wa-rad-row:hover { background: var(--wa-hover); }
+.wa-app .wa-rad-main { flex: 1; min-width: 0; overflow: hidden; }
+.wa-app .wa-rad-main b { display: block; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-app .wa-rad-main .wa-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-app .wa-rad-nums { flex: none; text-align: right; }
+.wa-app .wa-rad-wait { display: block; font-style: normal; font-size: 13px; font-weight: 600; }
+.wa-app .wa-rad-wait.cool { color: var(--wa-muted); }
+.wa-app .wa-rad-wait.warm { color: #e0a33e; }
+.wa-app .wa-rad-wait.hot { color: #ef6c5b; }
+@media (max-width: 620px) {
+  .wa-app .wa-rad-stats { grid-template-columns: repeat(2, 1fr); }
+}

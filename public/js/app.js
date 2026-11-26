@@ -1231,7 +1231,7 @@ async function renderWebConsole() {
   if (!bot) return (location.hash = '#/dashboard');
 
   document.title = 'WhatsApp - by Ntandomods';
-  const WAI = {"user": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-3.300 0-10 1.700-10 5v3h20v-3c0-3.300-6.700-5-10-5z\"/></svg>", "chat": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M19.8 4H4.2C3 4 2 5 2 6.2v15.4l4-4h13.8c1.2 0 2.2-1 2.2-2.2V6.2C22 5 21 4 19.8 4zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z\"/></svg>", "bots": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M12 2a2 2 0 0 1 1 3.7V7h4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h4V5.7A2 2 0 0 1 12 2zM8.5 12a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z\"/></svg>", "moon": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.4A5.5 5.5 0 0 1 13.4 3.1C13 3 12.5 3 12 3z\"/></svg>", "new": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M19.2 3H4.8C3.8 3 3 3.8 3 4.8v14.4L7 15h12.2c1 0 1.8-.8 1.8-1.8V4.8c0-1-.8-1.8-1.8-1.8zM16 10h-3v3h-2v-3H8V8h3V5h2v3h3v2z\" transform=\"translate(0 1.5)\"/></svg>", "search": "<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M15.9 14.3H15l-.3-.3c1-1.1 1.6-2.7 1.6-4.3 0-3.7-3-6.7-6.7-6.7S3 6 3 9.7s3 6.7 6.7 6.7c1.6 0 3.2-.6 4.3-1.6l.3.3v.8l5.1 5.1 1.5-1.5-5-5.2zm-6.2 0a4.6 4.6 0 1 1 0-9.200 4.600 4.600 0 0 1 0 9.200z\"/></svg>", "send": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M1.1 21.8 23 12.4 1.1 3l-.1 7.300 15.600 2.100L1 14.500z\"/></svg>", "emoji": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\"><path fill=\"currentColor\" d=\"M9.15 11.4a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zm5.7 0a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM12 17.5c2 0 3.700-1.100 4.500-2.700H7.500c.8 1.600 2.500 2.700 4.500 2.700zM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z\"/></svg>", "lock": "<svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\"><path fill=\"currentColor\" d=\"M12 1a5 5 0 0 0-5 5v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v2H9V6z\"/></svg>"};
+  const WAI = {"user": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-3.300 0-10 1.700-10 5v3h20v-3c0-3.300-6.700-5-10-5z\"/></svg>", "chat": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M19.8 4H4.2C3 4 2 5 2 6.2v15.4l4-4h13.8c1.2 0 2.2-1 2.2-2.2V6.2C22 5 21 4 19.8 4zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z\"/></svg>", "bots": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M12 2a2 2 0 0 1 1 3.7V7h4a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h4V5.7A2 2 0 0 1 12 2zM8.5 12a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z\"/></svg>", "moon": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 3a9 9 0 1 0 9 9c0-.5 0-.9-.1-1.4A5.5 5.5 0 0 1 13.4 3.1C13 3 12.5 3 12 3z\"/></svg>", "new": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M19.2 3H4.8C3.8 3 3 3.8 3 4.8v14.4L7 15h12.2c1 0 1.8-.8 1.8-1.8V4.8c0-1-.8-1.8-1.8-1.8zM16 10h-3v3h-2v-3H8V8h3V5h2v3h3v2z\" transform=\"translate(0 1.5)\"/></svg>", "search": "<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\"><path fill=\"currentColor\" d=\"M15.9 14.3H15l-.3-.3c1-1.1 1.6-2.7 1.6-4.3 0-3.7-3-6.7-6.7-6.7S3 6 3 9.7s3 6.7 6.7 6.7c1.6 0 3.2-.6 4.3-1.6l.3.3v.8l5.1 5.1 1.5-1.5-5-5.2zm-6.2 0a4.6 4.6 0 1 1 0-9.200 4.600 4.600 0 0 1 0 9.200z\"/></svg>", "send": "<svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\"><path fill=\"currentColor\" d=\"M1.1 21.8 23 12.4 1.1 3l-.1 7.300 15.600 2.100L1 14.500z\"/></svg>", "emoji": "<svg viewBox=\"0 0 24 24\" width=\"26\" height=\"26\"><path fill=\"currentColor\" d=\"M9.15 11.4a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zm5.7 0a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM12 17.5c2 0 3.700-1.100 4.500-2.700H7.500c.8 1.600 2.500 2.700 4.500 2.700zM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z\"/></svg>", "lock": "<svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\"><path fill=\"currentColor\" d=\"M12 1a5 5 0 0 0-5 5v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v2H9V6z\"/></svg>", "radar": "<svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\"><path fill=\"currentColor\" d=\"M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8V2zm0 4a6 6 0 1 0 6 6h-2a4 4 0 1 1-4-4V6zm0 4a2 2 0 1 0 2 2h-2v-2zM12 2v6l4.2 2.4-1 1.7L10.5 9.4V2H12z\"/></svg>"};
   let waTheme = 'dark';
   try { waTheme = localStorage.getItem('wa_theme') || 'dark'; } catch (e) { /* ignore */ }
   const myInitial = esc((bot.name || 'W').charAt(0).toUpperCase());
@@ -1250,6 +1250,7 @@ async function renderWebConsole() {
         <header class="wa-side-head">
           <div class="wa-brand"><b>WhatsApp</b><small>by Ntandomods</small></div>
           <div class="wa-side-icons">
+            <button class="wa-icon-btn wa-radar-btn" id="waRadarBtn" title="Response Radar - who is waiting on a reply">${WAI.radar}<i class="wa-rad-badge" id="waRadBadge" hidden></i></button>
             <button class="wa-icon-btn" id="waNew" title="New chat">${WAI.new}</button>
             <button class="wa-icon-btn" id="waProfBtn" title="Profile and settings">${WAI.user}</button>
           </div>
@@ -1699,6 +1700,7 @@ async function renderWebConsole() {
     t.querySelectorAll('[data-mmenu]').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); const r = b.getBoundingClientRect(); msgMenu(b.dataset.mmenu, r.left - 120, r.bottom); }; });
     t.querySelectorAll('.wa-msg[data-id]').forEach((el) => { el.oncontextmenu = (e) => { e.preventDefault(); msgMenu(el.dataset.id, e.clientX, e.clientY); }; });
     if (window.WAX) WAX.afterPaint(t);
+    if (window.WUNDO) WUNDO.afterPaint(t);
     if (nearBottom && !S.find) t.scrollTop = t.scrollHeight;
     autoLoadImages();
   }
@@ -1786,6 +1788,7 @@ async function renderWebConsole() {
       S.conn = r.conn || S.conn; S.me = r.me || S.me; S.stopped = !!r.offline;
       paintList();
       if (r.offline) paintStatus();
+      if (window.WRADAR) setTimeout(() => WRADAR.badge(), 400);
     } catch (e) {
       if (/not running/i.test(e.message)) { S.stopped = true; paintStatus(); }
       $('#waList').innerHTML = `<div class="chat-empty">${esc(e.message)}${/not running/i.test(e.message) ? '<br><a href="#/dashboard">Start the bot first</a>' : ''}</div>`;
@@ -1826,10 +1829,16 @@ async function renderWebConsole() {
     const raw = ta.value.trim();
     if (!raw || !S.jid) return;
     const prep = window.WAX ? WAX.prepareSend(raw) : { text: raw };
-    const text = prep.text;
+    const payload = { jid: S.jid, text: prep.text, mentions: prep.mentions, quotedId: S.replyTo ? S.replyTo.id : undefined };
+    const reply = S.replyTo;
+    // Undo Send: hold the message for a few seconds so it can be pulled back before it ever leaves.
+    if (window.WUNDO && WUNDO.hold(payload, reply)) {
+      ta.value = ''; setReply(null); ta.focus();
+      return;
+    }
     ta.disabled = true;
     try {
-      await api(base + '/send', { method: 'POST', body: { jid: S.jid, text, mentions: prep.mentions, quotedId: S.replyTo ? S.replyTo.id : undefined } });
+      await api(base + '/send', { method: 'POST', body: payload });
       ta.value = ''; setReply(null);
     } catch (er) { toast(er.message, 'err'); }
     ta.disabled = false; ta.focus();
@@ -1862,6 +1871,9 @@ async function renderWebConsole() {
 
   let searchT = null;
   $('#waSearch').oninput = (e) => { clearTimeout(searchT); searchT = setTimeout(() => { S.q = e.target.value.trim(); loadChats(); }, 250); };
+
+  // Response Radar: who is waiting on a reply from this number.
+  $('#waRadarBtn').onclick = () => { if (window.WRADAR) WRADAR.open(); };
 
   $('#waNew').onclick = async (e) => {
     // New chat / new group / join by invite link, all behind one button.
@@ -1983,6 +1995,7 @@ async function renderWebConsole() {
       if (!P.desktop) toast('Notifications are blocked in your browser settings', 'err');
     };
     $('#waDisappear').onchange = (e) => guard(() => api(base + '/disappearing', { method: 'POST', body: { seconds: Number(e.target.value) } }), 'Default timer updated');
+    if (window.WUNDO) WUNDO.decorateProfile(profEl);
     profEl.querySelectorAll('[data-unblock]').forEach((b) => {
       b.onclick = () => guard(async () => { await api(base + '/block', { method: 'POST', body: { jid: b.dataset.unblock, block: false } }); b.closest('.wa-blocked').remove(); }, 'Contact unblocked');
     });
@@ -2105,7 +2118,7 @@ async function renderWebConsole() {
     catch (e) { console.error('[wa-rich]', e); }
   }
   { const ctx = { S, base, bot, api, toast, esc, dialog, popMenu, openChat, loadChats, paintList, paintTop, avatarHtml, hhmm, paintThread, setReply, $ };
-    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WAGRP', 'WASTAT', 'WACHAN', 'WAAUTO', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
+    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WAGRP', 'WUNDO', 'WRADAR', 'WASTAT', 'WACHAN', 'WAAUTO', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
   if (window.WAACC) {
     try { WAACC.init({ bot, api, toast, esc, dialog }); }
     catch (e) { console.error('[wa-accounts]', e); }
