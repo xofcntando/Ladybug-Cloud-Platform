@@ -2179,3 +2179,78 @@ body[data-page="/web"] { overflow: hidden; }
 .wa-app[data-theme="dark"] .wa-empty { background: radial-gradient(90% 70% at 50% 0%, rgba(47, 107, 255, .22), transparent 70%), #0a1330; }
 .wa-app .wa-empty h2 { font-family: var(--lb-display); font-weight: 700; letter-spacing: -.6px; }
 .wa-app .wa-empty-logo { border-radius: 20px; box-shadow: 0 10px 34px -12px rgba(47, 107, 255, .8); }
+
+/* ============================================================================
+   Chat Digest, Notes & Follow-ups, Auto-translate
+   ============================================================================ */
+.wa-dialog.wad-wide, .wa-dialog.wac-wide, .wa-dialog.wat-wide {
+  width: min(760px, 100%); max-height: 88vh; display: block; overflow-y: auto;
+}
+.wad-tools { display: flex; align-items: center; gap: 8px; }
+.wad-select {
+  background: var(--wa-panel-2); color: var(--wa-text); border: 1px solid var(--wa-line);
+  border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; outline: 0;
+}
+.wad-summary { background: var(--wa-panel-2); border-radius: 10px; padding: 12px 14px; margin: 4px 0 12px; }
+.wad-summary p { margin: 0 0 6px; line-height: 1.45; font-size: 14px; }
+.wad-summary p:last-child { margin-bottom: 0; }
+.wad-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 10px; }
+.wad-stats > div { background: var(--wa-panel-2); border-radius: 10px; padding: 10px 8px; text-align: center; }
+.wad-stats b { display: block; font-size: 20px; font-weight: 700; color: var(--wa-text); }
+.wad-stats span { font-size: 11px; color: var(--wa-muted); text-transform: uppercase; letter-spacing: .04em; }
+.wad-people { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.wad-person { background: var(--wa-panel-2); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; }
+.wad-person i, .wad-kw i, .wad-sec h4 i, .wac-sub i, .wac-tabs i { font-style: normal; color: var(--wa-muted); margin-left: 4px; font-size: 11px; }
+.wad-sec { border-top: 1px solid var(--wa-line); padding-top: 10px; margin-top: 10px; }
+.wad-sec h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--wa-muted); font-weight: 600; }
+.wad-kws { display: flex; flex-wrap: wrap; gap: 6px; }
+.wad-kw { background: color-mix(in srgb, var(--wa-accent) 16%, transparent); color: var(--wa-text); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; }
+.wad-media .wad-kw { background: var(--wa-panel-2); }
+.wad-rows { display: flex; flex-direction: column; gap: 6px; }
+.wad-row { display: flex; gap: 8px; align-items: flex-start; background: var(--wa-panel-2); border-radius: 9px; padding: 8px 10px; cursor: pointer; }
+.wad-row:hover { background: var(--wa-active); }
+.wad-row-body { min-width: 0; flex: 1; }
+.wad-row-text { font-size: 13.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.wad-row-body a { color: var(--wa-link); overflow-wrap: anywhere; font-size: 13px; }
+.wad-badge { flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; border-radius: 5px; padding: 3px 6px; background: color-mix(in srgb, var(--wa-accent-2) 22%, transparent); color: var(--wa-text); }
+.wad-muted { color: var(--wa-muted); }
+.wad-empty { color: var(--wa-muted); font-size: 13px; padding: 6px 0; }
+.wad-hours { display: flex; align-items: flex-end; gap: 3px; height: 76px; padding: 4px 0 0; }
+.wad-hour { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+.wad-hour i { display: block; width: 100%; min-height: 2px; background: var(--wa-accent); border-radius: 2px 2px 0 0; opacity: .85; }
+.wad-hour span { font-size: 9px; color: var(--wa-muted); margin-top: 3px; height: 11px; }
+.wad-foot { font-size: 12px; margin-top: 8px; line-height: 1.4; }
+
+/* notes & follow-ups */
+.wac-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.wac-tabs button { flex: 1; padding: 8px 10px; border-radius: 8px; background: var(--wa-panel-2); color: var(--wa-muted); font: inherit; font-size: 13px; }
+.wac-tabs button.on { background: var(--wa-active); color: var(--wa-text); font-weight: 600; }
+.wac-due { background: color-mix(in srgb, #ef6c5b 18%, transparent); color: var(--wa-text); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 10px; }
+.wac-body { display: flex; flex-direction: column; gap: 8px; }
+.wac-row { background: var(--wa-panel-2); border-radius: 10px; padding: 10px 12px; border-left: 3px solid transparent; }
+.wac-row.overdue { border-left-color: #ef6c5b; }
+.wac-row.done { opacity: .6; }
+.wac-row-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+.wac-row-top b { font-size: 14px; }
+.wac-row-top small { color: var(--wa-muted); font-size: 11.5px; white-space: nowrap; }
+.wac-row-text { font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wac-row-act { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.wac-row-act .wa-btn { padding: 4px 10px; font-size: 12px; }
+.wac-label { display: block; font-size: 12px; color: var(--wa-muted); margin: 10px 0 5px; }
+.wac-sub { margin: 14px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--wa-muted); }
+.wac-badge { position: absolute; top: 2px; right: 2px; }
+#wacBtn { position: relative; }
+
+/* auto-translate */
+.wat-switch { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 6px; font-size: 13.5px; line-height: 1.4; cursor: pointer; }
+.wat-switch input { margin-top: 2px; accent-color: var(--wa-accent); }
+.wat-actions { margin: 10px 0 4px; }
+.wat-list { display: flex; flex-direction: column; gap: 6px; }
+.wat-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--wa-panel-2); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.wat-row .wa-btn { padding: 4px 10px; font-size: 12px; }
+.wat-tr { margin-top: 6px; padding-top: 6px; border-top: 1px dashed color-mix(in srgb, var(--wa-text) 22%, transparent); font-size: 13px; line-height: 1.4; color: var(--wa-text); }
+.wat-lang { display: inline-block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--wa-muted); border: 1px solid var(--wa-line); border-radius: 4px; padding: 1px 4px; margin-right: 6px; vertical-align: 1px; }
+.wa-msg.wat-has { max-width: min(78%, 560px); }
+@media (max-width: 720px) {
+  .wad-stats { grid-template-columns: repeat(3, 1fr); }
+}

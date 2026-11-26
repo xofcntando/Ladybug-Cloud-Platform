@@ -2118,7 +2118,7 @@ async function renderWebConsole() {
     catch (e) { console.error('[wa-rich]', e); }
   }
   { const ctx = { S, base, bot, api, toast, esc, dialog, popMenu, openChat, loadChats, paintList, paintTop, avatarHtml, hhmm, paintThread, setReply, $ };
-    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WAGRP', 'WUNDO', 'WRADAR', 'WASTAT', 'WACHAN', 'WAAUTO', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
+    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WAGRP', 'WUNDO', 'WRADAR', 'WASTAT', 'WACHAN', 'WAAUTO', 'WADIG', 'WACRM', 'WATR', 'WAPRO']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
   if (window.WAACC) {
     try { WAACC.init({ bot, api, toast, esc, dialog }); }
     catch (e) { console.error('[wa-accounts]', e); }

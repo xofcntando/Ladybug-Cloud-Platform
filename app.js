@@ -1171,6 +1171,14 @@ app.get('/api/bots/:id/web/deleted', requireAuth, (req, res) => { const b = ownB
 app.post('/api/bots/:id/web/deleted/clear', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.deletedClear(b, req, res); });
 app.get('/api/bots/:id/web/analytics', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.analytics(b, req, res); });
 app.post('/api/bots/:id/web/translate', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.translate(b, req, res); });
+// Chat Digest (local summary) and the private notes / follow-up book
+app.get('/api/bots/:id/web/digest', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.digest(b, req, res); });
+app.get('/api/bots/:id/web/notes', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.notes(b, req, res); });
+app.post('/api/bots/:id/web/notes', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.noteSave(b, req, res); });
+app.post('/api/bots/:id/web/notes/delete', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.noteDelete(b, req, res); });
+app.post('/api/bots/:id/web/followups', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.followupAdd(b, req, res); });
+app.put('/api/bots/:id/web/followups/:followupId', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.followupUpdate(b, req, res); });
+app.delete('/api/bots/:id/web/followups/:followupId', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.followupDelete(b, req, res); });
 // status (stories), gallery, contacts, labels
 const ownWeb = (fn) => (req, res) => { const b = ownBot(req, res); if (b) webconsole[fn](b, req, res); };
 app.get('/api/bots/:id/web/status', requireAuth, ownWeb('statusList'));
