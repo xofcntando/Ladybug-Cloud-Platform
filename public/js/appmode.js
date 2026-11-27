@@ -113,6 +113,7 @@
     { icon: '✨', label: 'AI assistant', tool: 'ai', note: 'Replies, summaries, transcription' },
     { icon: '🧭', label: 'Chatbot flows', tool: 'flows', note: 'Multi-step auto-replies' },
     { icon: '🧠', label: 'Ladybug Brain', tool: 'brain', note: 'Built-in auto-responder' },
+    { icon: '✋', label: 'Human takeover', tool: 'pause', note: 'Pause the bot in a chat' },
   ];
 
   var bar = null;

@@ -632,6 +632,51 @@ function unknownReply(p, seed, intent) {
   return lead + ' I have passed it to ' + who + ', who will reply here shortly.';
 }
 
+/* ------------------------------------------------------------------ media messages
+ * A customer who sends a voice note has asked a question; saying nothing is the worst
+ * possible answer. These replies are deliberately short and always offer a way forward:
+ * type it, or we hand over. When a transcription service is wired up the bot answers the
+ * words instead (see transcribe() in webBridge.js), so this is the fallback, not the plan.
+ */
+const MEDIA_KINDS = ['voice', 'audio', 'image', 'video', 'document'];
+
+function mediaReply(profile, kind, opts) {
+  const p = profile || {};
+  const phone = p.phone || (p.contact && p.contact.phone) || '';
+  const call = phone ? ' You can also call us on ' + phone + '.' : '';
+  const k = String(kind || '').toLowerCase();
+
+  if (k === 'voice' || k === 'audio') {
+    return {
+      text: 'Sorry - I cannot listen to voice notes yet. Could you type your question? ' +
+        'It only takes a moment and I can answer straight away.' + call,
+      intent: 'media:voice', confidence: 0.9, escalate: false, media: k,
+    };
+  }
+  if (k === 'image') {
+    return {
+      text: 'Thanks for the photo - I cannot read pictures yet, so I do not want to guess. ' +
+        'Could you type what you need help with?' + call,
+      intent: 'media:image', confidence: 0.9, escalate: false, media: k,
+    };
+  }
+  if (k === 'video') {
+    return {
+      text: 'Thanks for the video - I cannot watch those yet. Could you type your question and ' +
+        'I will answer it here?' + call,
+      intent: 'media:video', confidence: 0.9, escalate: false, media: k,
+    };
+  }
+  if (k === 'document') {
+    return {
+      text: 'Thanks for the file - I cannot open documents yet. Could you type what you need and ' +
+        'I will take it from there?' + call,
+      intent: 'media:document', confidence: 0.9, escalate: false, media: k,
+    };
+  }
+  return null; // stickers, locations, polls: not a question, so stay quiet
+}
+
 /* ------------------------------------------------------------------ preview helper */
 
 /** Console "try it" box: run a message through the engine with a throwaway session. */
@@ -643,4 +688,5 @@ module.exports = {
   MAX_FAQS, MAX_PRICES, MAX_REPLY, SESSION_TTL_MS, MAX_SESSIONS,
   normalizeProfile, ready, think, preview, fresh, newSession,
   norm, tokens, words, stem, entities, sentiment, retrieve, buildIndex, hoursState, INTENTS,
+  MEDIA_KINDS, mediaReply,
 };

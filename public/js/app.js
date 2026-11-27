@@ -1658,6 +1658,7 @@ async function renderWebConsole() {
     $('#waInfoBtn').onclick = openInfo;
     $('#waTopInfo').onclick = openInfo;
     if (window.WAGAL) WAGAL.decorateTop(top);
+    if (window.WAPAUSE) WAPAUSE.decorateTop(top);
   }
 
   /* search inside the open chat */
@@ -2233,7 +2234,7 @@ async function renderWebConsole() {
     catch (e) { console.error('[wa-rich]', e); }
   }
   { const ctx = { S, base, bot, api, toast, esc, dialog, popMenu, openChat, loadChats, paintList, paintTop, avatarHtml, hhmm, paintThread, setReply, $ };
-    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WAGRP', 'WUNDO', 'WRADAR', 'WASTAT', 'WACHAN', 'WAAUTO', 'WADIG', 'WACRM', 'WATR', 'WAPRO', 'WAAI', 'WAFLOW', 'WABRAIN']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
+    for (const k of ['WALBL', 'WAGAL', 'WACON', 'WAGRP', 'WUNDO', 'WRADAR', 'WASTAT', 'WACHAN', 'WAAUTO', 'WADIG', 'WACRM', 'WATR', 'WAPRO', 'WAAI', 'WAFLOW', 'WABRAIN', 'WAPAUSE']) { if (window[k]) { try { window[k].init(ctx); } catch (e) { console.error('[' + k + ']', e); } } } }
   if (window.WAACC) {
     try { WAACC.init({ bot, api, toast, esc, dialog }); }
     catch (e) { console.error('[wa-accounts]', e); }
@@ -2267,6 +2268,7 @@ async function renderWebConsole() {
         ai: () => window.WAAI && WAAI.open(),
         flows: () => window.WAFLOW && WAFLOW.open(),
         brain: () => window.WABRAIN && WABRAIN.open(),
+        pause: () => window.WAPAUSE && WAPAUSE.open(),
         appearance: () => window.WAX && WAX.openAppearance(),
         accounts: () => window.WAACC && WAACC.open(),
       };

@@ -219,6 +219,12 @@
             <input class="wa-brain-input" id="bTest" maxlength="500" placeholder="Type a message a customer might send\u2026">
             <button type="button" class="wa-brain-btn" id="bTestGo">Send</button>
           </div>
+          <div class="wa-brain-chips">
+            <span>No text? See what a media message gets:</span>
+            <button type="button" class="wa-brain-chip" data-media="voice">Voice note</button>
+            <button type="button" class="wa-brain-chip" data-media="image">Photo</button>
+            <button type="button" class="wa-brain-chip" data-media="document">Document</button>
+          </div>
           <div id="bTestOut" class="wa-brain-out"></div>
         </div>
 
@@ -364,13 +370,14 @@
     const go = q('#bTestGo');
     const input = q('#bTest');
     const out = q('#bTestOut');
-    const run = async () => {
+    const run = async (media) => {
       const text = (input.value || '').trim();
-      if (!text) return;
+      if (!text && !media) return;
       sync(d);
       out.innerHTML = '<div class="wa-brain-thinking">Thinking\u2026</div>';
       try {
-        const r = await C.api(C.base + '/brain/test', { method: 'POST', body: { text, profile: cfg.profile } });
+        const body = media ? { media, profile: cfg.profile } : { text, profile: cfg.profile };
+        const r = await C.api(C.base + '/brain/test', { method: 'POST', body });
         const pct = Math.round((r.confidence || 0) * 100);
         const trace = (r.trace || []).map((t) => {
           const bits = Object.keys(t).filter((k) => k !== 'step').map((k) => k + ': ' + (typeof t[k] === 'object' ? JSON.stringify(t[k]) : t[k]));
@@ -388,8 +395,9 @@
         out.innerHTML = `<div class="wa-brain-err">${esc(e.message || 'Test failed')}</div>`;
       }
     };
-    if (go) go.onclick = run;
+    if (go) go.onclick = () => run();
     if (input) input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } };
+    d.querySelectorAll('[data-media]').forEach((b) => { b.onclick = () => run(b.dataset.media); });
   }
 
   /* ------------------------------------------------------------------ rail */

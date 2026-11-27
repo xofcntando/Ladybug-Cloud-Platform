@@ -25,9 +25,11 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 
 ## 🧠 Ladybug Brain, ✨ AI assistant & 🧭 Chatbot flows (WhatsApp console)
 
-Three newer tools in the WhatsApp Web console:
+Five newer tools in the WhatsApp Web console:
 
 - **Ladybug Brain** (🧠 in the rail): the built-in auto-responder that needs **no key at all**. It reads the message, works out the intent and mood, retrieves the answer from your own business profile (hours, prices, FAQs, delivery, refunds) and replies — or asks a clarifying question, or hands the chat to a human. Every reply shows its reasoning in the console’s *Try it* box, and anything it could not answer lands in a gap list you can turn into a FAQ with one tap. Runs entirely on your server; nothing is sent anywhere.
+- **Human takeover** (✋ in the rail): the brain stands down in a chat the moment you reply to it, from your phone or from the console, so the two of you never talk over each other. The open chat shows a **Bot paused** pill you can click to resume; every pause expires by itself (8 hours by default) so a forgotten one cannot leave a customer on read. Complaints and anyone asking for a human are still handed to you straight away.
+- **Voice notes and photos**: a customer who sends a voice note has still asked a question, so the bot answers instead of going silent. It transcribes the audio if you point `LADYBUG_STT_URL` at a service, and otherwise says plainly that it cannot listen and asks for text. Photos, videos and documents get the same honest treatment. Stickers and locations get nothing, because they are not questions.
 - **AI assistant** (✨ in the rail): suggest replies, summarise a thread, rewrite in a different tone, and transcribe voice notes. Bring your own OpenAI-compatible key — it is stored server-side, only ever shown masked, and never used unless you configure it. https-only with SSRF guards, 20 calls/minute per bot.
 - **Chatbot flows** (🧭 in the rail): multi-step auto-replies — a message with numbered options, a different message per choice, up to 8 steps, loops back to the menu, per-chat cooldowns and an "any message" welcome trigger.
 

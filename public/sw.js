@@ -7,7 +7,7 @@
      abort the whole install (the old code used addAll(), which is all-or-nothing).
    - Every page module in public/js is listed below; keep this list in sync with index.html.
 */
-const VERSION = 'ladybug-v13';
+const VERSION = 'ladybug-v14';
 
 const SHELL = [
   '/',

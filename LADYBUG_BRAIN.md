@@ -143,10 +143,12 @@ Settings live in `db.data.waBook[botId].auto.brain`, so they inherit the existin
 | `lib/wa-book.js` | `cleanBrain`, `addGap`, `gapsView`, `clearGaps` |
 | `lib/bots.js` | persists `brain-gap` events |
 | `lib/installer.js` | ships the engine next to the bridge |
-| `lib/webconsole.js` | `brain`, `brainTest`, `brainGapsClear` handlers |
+| `lib/webconsole.js` | `brain`, `brainTest`, `brainGapsClear`, `paused`, `pauseSet` handlers |
 | `app.js` | `GET /api/bots/:id/web/brain`, `POST …/brain/test`, `POST …/brain/gaps/clear` |
 | `public/js/wa-brain.js` | the console panel |
-| `test/ladybug-brain.test.js` | 150 assertions over the engine and the gap log |
+| `public/js/wa-pause.js` | the "bot paused" pill and the takeover panel |
+| `test/ladybug-brain.test.js` | 156 assertions over the engine and the gap log |
+| `test/wa-takeover.test.js` | 60 assertions over pausing and media replies |
 
 ---
 
@@ -159,3 +161,74 @@ node test/ladybug-brain.test.js
 The suite covers text normalisation and stemming, entity extraction, sentiment including shouting and urgency, profile normalisation and caps, opening-hours state across open/closed/next-day/timezone, retrieval ranking and the tiny-corpus case, every intent, the weigh step, escalation for anger / human requests / complaints, slot filling across turns, gap emission and the second-miss escalation, ambiguity clarification, session TTL, `preview`, and the `wa-book` settings and gap log including the "brain on without a profile" rejection.
 
 It runs with a throwaway `DATA_DIR` and touches no network and no real bot.
+
+---
+
+## Human takeover
+
+A bot that keeps answering after the owner has stepped in is worse than no bot at all: the
+customer gets two voices saying different things. So the brain stands down the moment the
+owner replies to a chat.
+
+The rule is **per chat, not global**. Answering one angry customer should not silence the
+bot for everybody else. A pause starts when the owner sends a message in that chat, whether
+from their phone or from the console compose box, and it is enforced inside the bot process
+(`pausedNow()` in `webBridge.js`) before flows, rules, the brain and the away message - so a
+paused chat gets *nothing at all*, not even the away reply.
+
+Every pause carries an expiry. This is the part that matters in practice: the failure mode
+that actually hurts is a forgotten pause leaving a customer on read for a week. The default
+is 8 hours, configurable to 1, 2, 4, 8, 24 or 72 hours, or "until I resume it". An expired
+pause lifts itself on the next read.
+
+Two guards keep the bot from pausing itself:
+
+- **Echo detection.** Every auto-reply is recorded in `botEcho` before it is sent. When a
+  `fromMe` message arrives, `isOwnEcho()` checks whether it is a reply we just sent; only a
+  message the bot did *not* write counts as the owner taking over.
+- **Idempotence.** Pausing an already-paused chat does not reset the clock or re-announce.
+
+The bot tells the platform over IPC (`brain-pause`), which persists the pause in
+`waBook[botId].paused`, so a restart does not wake the bot up mid-conversation. The paused
+map also travels to the bot at boot through `LADYBUG_AUTO`.
+
+In the console the open chat shows a **Bot paused** pill in the header; clicking it resumes.
+The **Human takeover** panel (left rail, or `#/web?bot=…&tool=pause`) lists every paused chat
+with how long is left and why it was paused, offers **Resume** and **Resume all**, lets the
+owner pause the open chat by hand, and sets how long new pauses last.
+
+Complaints, angry messages and anyone asking for a human are still escalated to the owner
+straight away - pausing is about who answers, escalation is about who is told.
+
+## Voice notes, photos and files
+
+The brain reads text. A customer who sends a voice note has still asked a question, and
+silence is the worst possible answer - they cannot tell whether the message arrived.
+
+When a message has no text, `maybeMedia()` looks at its type:
+
+| Message | What the bot does |
+|---|---|
+| Voice note, audio file | Transcribes it if `LADYBUG_STT_URL` is set and answers the words. Otherwise says plainly that it cannot listen and asks for text. |
+| Photo, video | Acknowledges it, says it cannot see it, asks what is needed. Never guesses at a picture. |
+| Document | Same, with the file named as unreadable. |
+| Sticker, location, poll | Nothing. These are not questions. |
+
+The wording lives in `mediaReply()` in the engine, so it is unit-tested and uses the owner's
+phone number as a way out. Replies are rate-limited per chat and kind (one per 10 minutes),
+so a burst of six voice notes gets one answer rather than six.
+
+Transcription is opt-in and provider-agnostic. Set `LADYBUG_STT_URL` (and optionally
+`LADYBUG_STT_KEY`) to an endpoint that accepts:
+
+```json
+{ "audio": "<base64>", "mime": "audio/ogg" }
+```
+
+and returns `{ "text": "..." }` or `{ "transcript": "..." }`. The audio is downloaded with
+`downloadMediaMessage`, capped at 12 MB and 20 seconds. If the service is missing, slow or
+returns an error, the bot falls back to the honest "I cannot listen" line - it never goes
+silent and never fails the message loop.
+
+The console's **Try it** box has **Voice note / Photo / Document** chips, so an owner can
+read exactly what a customer sending media would get before turning the brain on.

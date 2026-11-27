@@ -2654,3 +2654,42 @@ html[data-app="1"] .pwa-install { bottom: calc(92px + env(safe-area-inset-bottom
   .wa-brain-row2 { flex-direction: column; }
   .wa-brain-row2 .wa-brain-field { min-width: 0; }
 }
+
+/* ---- Human takeover: the "bot paused" pill and its panel ---- */
+.wa-pause-pill {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  height: 28px; padding: 0 12px; margin-right: 4px; border-radius: 999px;
+  border: 1px solid rgba(233, 162, 59, .45); background: rgba(233, 162, 59, .12);
+  color: #f0b95e; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.wa-pause-pill:hover { background: rgba(233, 162, 59, .2); }
+.wa-pause-dot { width: 7px; height: 7px; border-radius: 50%; background: #e9a23b; box-shadow: 0 0 0 3px rgba(233, 162, 59, .18); }
+
+.wa-pause { display: flex; flex-direction: column; width: min(520px, 100%); max-height: 86vh; }
+.wa-pause-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 14px; border-bottom: 1px solid var(--line); }
+.wa-pause-title { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; color: #e9a23b; }
+.wa-pause-title b { display: block; color: var(--ink); font-size: 15px; }
+.wa-pause-title span { display: block; margin-top: 3px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.wa-pause-body { padding: 14px 18px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.wa-pause-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: rgba(255, 255, 255, .02); }
+.wa-pause-card-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.wa-pause-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 9px; background: rgba(233, 162, 59, .16); color: #f0b95e; font-size: 11px; }
+.wa-pause-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.wa-pause-row:first-of-type { border-top: 0; }
+.wa-pause-who { flex: 1; min-width: 0; }
+.wa-pause-who b { display: block; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-pause-who span { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+.wa-pause-row .wa-btn { flex: none; height: 30px; padding: 0 12px; font-size: 12.5px; }
+.wa-pause-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+.wa-pause-field { display: flex; align-items: center; gap: 10px; }
+.wa-pause-field > span { flex: 1; font-size: 13px; color: var(--ink); }
+.wa-pause-field select { height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--wa-panel); color: var(--ink); font: inherit; font-size: 13px; }
+.wa-pause .wa-note { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+@media (max-width: 560px) { .wa-pause-pill span:not(.wa-pause-dot) { display: none; } }
+
+/* try-it chips: preview what a voice note or photo gets */
+.wa-brain-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.wa-brain-chips > span { font-size: 11.5px; color: var(--muted); }
+.wa-brain-chip { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 11.5px; cursor: pointer; }
+.wa-brain-chip:hover { background: rgba(255, 255, 255, .06); }

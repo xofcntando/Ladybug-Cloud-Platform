@@ -1559,6 +1559,9 @@ app.post('/api/bots/:id/web/ai', requireAuth, ownWeb('ai'));
 app.get('/api/bots/:id/web/brain', requireAuth, ownWeb('brain'));
 app.post('/api/bots/:id/web/brain/test', requireAuth, ownWeb('brainTest'));
 app.post('/api/bots/:id/web/brain/gaps/clear', requireAuth, ownWeb('brainGapsClear'));
+// Human takeover: pause the bot in one chat (or all of them), and resume it again
+app.get('/api/bots/:id/web/paused', requireAuth, ownWeb('paused'));
+app.post('/api/bots/:id/web/pause', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.pauseSet(b, req, res); });
 app.get('/api/bots/:id/web/labels', requireAuth, ownWeb('labels'));
 app.post('/api/bots/:id/web/labels', requireAuth, ownWeb('labelCreate'));
 app.post('/api/bots/:id/web/labels/assign', requireAuth, ownWeb('labelAssign'));
