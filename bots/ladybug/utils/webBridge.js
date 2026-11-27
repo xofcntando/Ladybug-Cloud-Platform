@@ -526,12 +526,55 @@ function noteEcho(jid, text) {
 /** The owner just typed in this chat: stand down and tell the platform to remember it. */
 function ownerTookOver(jid, text) {
   if (isOwnEcho(jid, text)) return;
+
+  // Before anything else, learn from the exchange: whatever the customer asked last, and
+  // whatever the owner just typed back, is a real question/answer pair from this business.
+  // Only while the brain is on - otherwise the owner is having a normal conversation and
+  // there is nothing to teach. `isOwnEcho` above guarantees this is the owner's own words.
+  learnFromOwner(jid, text);
+
   if (pausedNow(jid)) return; // already paused, no need to re-announce
   const hours = auto.pauseHours == null ? 8 : auto.pauseHours;
   const until = hours ? Date.now() + hours * 3600_000 : 0;
   if (!auto.paused) auto.paused = {};
   auto.paused[jid] = until;
   try { process.send({ type: 'wa', event: 'brain-pause', botId: null, jid, hours, reason: 'owner' }); } catch (e) { /* parent gone */ }
+}
+
+/* ---- Learning from the owner's own replies.
+   The customer's last message is kept per chat for a short while; when the owner answers by
+   hand, the pair goes to the platform, which stores it and hands it back to the brain as
+   extra knowledge. Nothing is configured: the owner just replies as they always do. ---- */
+const lastInbound = new Map(); // jid -> { text, ts }
+const LEARN_TTL = 30 * 60_000;  // an answer to something asked half an hour ago is still useful
+const LEARN_MAX_CHATS = 400;
+
+function noteInbound(jid, text) {
+  const t = String(text || '').trim();
+  if (!jid || !t) return;
+  lastInbound.set(jid, { text: t.slice(0, 400), ts: Date.now() });
+  if (lastInbound.size > LEARN_MAX_CHATS) {
+    const now = Date.now();
+    for (const [k, v] of lastInbound) if (now - v.ts > LEARN_TTL) lastInbound.delete(k);
+    if (lastInbound.size > LEARN_MAX_CHATS) lastInbound.delete(lastInbound.keys().next().value);
+  }
+}
+
+/** A reply that is only a pleasantry teaches the bot nothing worth repeating. */
+const LEARN_SKIP = /^(ok(ay)?|k|thanks?|thank you|thx|ty|hi|hello|hey|yo|sure|yes|no|yep|nope|cool|nice|great|👍|🙏)[.!]*$/i;
+
+function learnFromOwner(jid, text) {
+  if (!auto.brain || auto.brain.enabled === false || !auto.brain.profile) return;
+  const a = String(text || '').trim();
+  if (!a || a.length < 3 || LEARN_SKIP.test(a)) return;
+  const last = lastInbound.get(jid);
+  if (!last || Date.now() - last.ts > LEARN_TTL) return;
+  lastInbound.delete(jid); // one owner reply answers one question
+  const q = last.text;
+  if (!q || q.length < 4 || LEARN_SKIP.test(q)) return;
+  try {
+    process.send({ type: 'wa', event: 'brain-learn', botId: null, jid, q, a: a.slice(0, 600) });
+  } catch (e) { /* parent gone */ }
 }
 
 function pushAuto(jid, text) {
@@ -828,6 +871,9 @@ function wire(s) {
         }
         if (type === 'notify' && !m.key.fromMe) {
           if (auto.readReceipts) { try { Promise.resolve(sock.readMessages([m.key])).catch(() => {}); } catch (e) { /* ignore */ } }
+          // Keep the customer's last words: if the owner answers this chat by hand, that
+          // question and their reply become something the brain can learn from.
+          if (!isGroup(r.jid)) { try { noteInbound(r.jid, r.entry && r.entry.text); } catch (e) { /* never break the loop */ } }
           try { maybeAutoReply(m, r); } catch (e) { /* never break the message loop */ }
         }
         if (type === 'notify' && !m.key.fromMe && !isGroup(r.jid)) {
@@ -2103,4 +2149,6 @@ if (enabled) {
   });
 }
 
-module.exports = { attach, enabled };
+// `_learning` is exported for the unit tests: the pairing rules are worth testing without a
+// WhatsApp socket, and nothing outside this file calls them in production.
+module.exports = { attach, enabled, _learning: { noteInbound, learnFromOwner, lastInbound, LEARN_SKIP, LEARN_TTL } };
