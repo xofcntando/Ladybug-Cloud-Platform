@@ -32,3 +32,26 @@
 - [x] `test/weekly-songs.test.js` (573 assertions) wired into `npm test`
 - [x] BOT_COMMANDS.md section + README bullet
 - [x] `npm test` green, module mirrored byte-identically, committed and pushed to `main`
+
+# Request C — "Add platform features" (options 1 & 3)
+
+## Monetization
+- [x] `lib/plans.js` — Free / Starter / Pro / Studio tiers, env-tunable prices and caps
+- [x] Enforced limits: bots, messages, AI replies, history days, API access
+- [x] `lib/usage.js` — per-user per-month metering, soft limits, 6-month trend, pruning
+- [x] Invoices/receipts from `db.payments` with `LB-YYYYMM-XXXX` numbers
+- [x] Trial + grace periods, plan stacking on renewal, `$1` extra slots still work
+- [x] `/api/plans`, `/api/billing/usage`, `/api/billing/invoices[/:id]`, `/api/billing/plan`
+
+## Dashboard & console UX
+- [x] `#/plans` screen: plan cards, usage meters, trend chart, receipts
+- [x] Plan strip + meters on the dashboard
+- [x] Saved replies with variables, search and usage counters (`lib/snippets.js`)
+- [x] Bulk start / stop / restart for owned bots (`POST /api/bots/bulk`)
+- [x] Visual custom-command builder (text / image / webhook) per bot
+- [x] Command builder modal widened to 940px for the two-column layout
+
+## Docs, tests, ship
+- [x] `test/plans-usage.test.js` (181 assertions) wired into `npm test`
+- [x] README + FEATURES_SITE_WIDE.md sections, service worker bumped to v15
+- [x] Full `npm test` green, committed and pushed to `main`
