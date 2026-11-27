@@ -23,6 +23,17 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 
 ---
 
+## ✨ AI assistant & 🧭 Chatbot flows (WhatsApp console)
+
+Two newer tools in the WhatsApp Web console, both opt-in:
+
+- **AI assistant** (✨ in the rail): suggest replies, summarise a thread, rewrite in a different tone, and transcribe voice notes. Bring your own OpenAI-compatible key — it is stored server-side, only ever shown masked, and never used unless you configure it. https-only with SSRF guards, 20 calls/minute per bot.
+- **Chatbot flows** (🧭 in the rail): multi-step auto-replies — a message with numbered options, a different message per choice, up to 8 steps, loops back to the menu, per-chat cooldowns and an "any message" welcome trigger.
+
+Full details, limits and security notes: **[AI_AND_FLOWS.md](AI_AND_FLOWS.md)**
+
+---
+
 ## 💰 Pricing, trial & coins
 
 - **Free trial:** every new account gets `TRIAL_DAYS` (default **7**) of free hosting for 1 bot. Existing accounts get a fresh trial on first boot after this update.

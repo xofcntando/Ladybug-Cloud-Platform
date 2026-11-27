@@ -110,6 +110,8 @@
     { icon: '🤖', label: 'Automation', tool: 'auto', note: 'Auto-replies and rules' },
     { icon: '🎨', label: 'Appearance', tool: 'appearance', note: 'Theme and wallpaper' },
     { icon: '🔗', label: 'Linked numbers', tool: 'accounts', note: 'Manage WhatsApp sessions' },
+    { icon: '✨', label: 'AI assistant', tool: 'ai', note: 'Replies, summaries, transcription' },
+    { icon: '🧭', label: 'Chatbot flows', tool: 'flows', note: 'Multi-step auto-replies' },
   ];
 
   var bar = null;
