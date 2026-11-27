@@ -1,28 +1,34 @@
-# Ladybug Brain — learn from owner-handled chats
+# `.weekly` — one song a week, out of the box
 
-## Engine (lib/bot-shims/ladybug-brain.js → mirror to bots/ladybug/utils/)
-- [x] Accept `profile.learned` in normalizeProfile (cap, clean, ids)
-- [x] Index learned pairs as retrieval docs
-- [x] Answer from a learned pair (intent `learned`, slightly lower confidence)
-- [x] Record learned count in the trace; export MAX_LEARNED
+## Catalog & rotation (`lib/bot-shims/weeklySongs.js` → mirror to `bots/ladybug/utils/`)
+- [x] Eight categories with a dozen real recordings each: love, Zimbabwe, gospel, amapiano, afrobeats, reggae, hip-hop, oldies
+- [x] One line per song saying why it is worth four minutes
+- [x] ISO-week rotation: same song all week, moves on every Monday, survives restarts
+- [x] Default category rotates weekly; per-category offset so the lists do not turn over together
+- [x] Category aliases and unique prefixes (`love`, `zimba`, `amap`, `r&b`, `zimbabwe`)
 
-## Store (lib/wa-book.js)
-- [x] brainLearned list: addLearned (dedupe + hits), learnedView, learnedFor, setLearnedStatus, clearLearned, brainFor
-- [x] setAuto always merges the learned store into the brain profile
-- [x] Export the new functions
+## The card
+- [x] Title, artist, year, category, reason, YouTube + Spotify search links
+- [x] Points at `.song <title>` for the audio instead of depending on the download APIs
+- [x] Fits one WhatsApp message, never prints `undefined`
 
-## Runtime (lib/bot-shims/webBridge.js + lib/bots.js)
-- [x] Track the last inbound customer message per chat (TTL, cap)
-- [x] ownerTookOver emits `brain-learn` with the question/answer pair (echo + brain-on guards)
-- [x] bots.js handles `brain-learn`, stores it and pushes the updated brain to the live bot
+## Weekly delivery
+- [x] `weekly-songs.json` in the bot data folder: subscribers + per-week sent marks, capped, written through a temp file
+- [x] `due()` / `markSent()` so a restart cannot double-post
+- [x] `deliver()` sends one pick per pass, survives a broken chat, reports failures
+- [x] `start()` timer from `index.js` on `connection.open`, checks every 20 min, only acts while the socket is open, unref'd
+- [x] Group switches need an admin or the owner
 
-## Console (lib/webconsole.js, app.js, public/js/wa-brain.js)
-- [x] brain GET returns learned rows; test uses them
-- [x] approve / dismiss / clear handlers + routes
-- [x] "Learned from your chats" card with Make FAQ / Dismiss / Clear
+## Command (`commands/general/weekly.js`)
+- [x] `.weekly`, `.weekly <category>`, `.weekly next`, `.weekly all`
+- [x] `.weekly on` / `.weekly off`
+- [x] `.weekly status` / `.weekly send` (owner)
+- [x] Themed replies, category menu, helpful error for an unknown category
+
+## Installer
+- [x] `ensureWeeklySongs()` copies the shim into every bot and re-applies the `index.js` hook after an upstream download
 
 ## Docs, tests, ship
-- [x] Engine tests (learned retrieval, cap, dismiss)
-- [x] Store tests (dedupe, hits, status, clear, survives restart)
-- [x] LADYBUG_BRAIN.md + README.md
-- [x] npm test green, mirror engine, commit, push to main
+- [x] `test/weekly-songs.test.js` (573 assertions) wired into `npm test`
+- [x] BOT_COMMANDS.md section + README bullet
+- [x] `npm test` green, module mirrored byte-identically, committed and pushed to `main`
