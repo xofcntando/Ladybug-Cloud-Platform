@@ -1,6 +1,10 @@
 /**
- * Bug Command — Random ladybug facts
+ * Ladybug Fact Command — Random ladybug facts
  * Made under Ntandomods
+ *
+ * This used to be `.bug`. `.bug` is now the bug-report command, which is the
+ * more useful meaning of the word in a bot people rely on, so the facts live
+ * here under a name that says what it does.
  */
 
 const theme = require('../../utils/ladybugTheme');
@@ -31,11 +35,11 @@ const FACTS = [
 ];
 
 module.exports = {
-  name: 'bug',
-  aliases: ['ladybugfact', 'bugfact', 'fact'],
+  name: 'ladybugfact',
+  aliases: ['bugfact', 'ladybugfacts', 'fact'],
   category: 'ladybug',
   description: 'Get a random ladybug fact',
-  usage: '.bug',
+  usage: '.ladybugfact',
 
   async execute(sock, msg, args, extra) {
     try {

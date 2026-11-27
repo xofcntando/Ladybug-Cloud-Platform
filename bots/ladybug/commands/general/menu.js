@@ -8,7 +8,9 @@ const { loadCommands } = require('../../utils/commandLoader');
 
 module.exports = {
   name: 'menu',
-  aliases: ['help', 'commands'],
+  // `.help` belongs to commands/general/help.js, which falls back to this menu
+  // when it is called with no argument.
+  aliases: ['commands', 'cmds'],
   category: 'general',
   description: 'Show all available commands',
   usage: '.menu',

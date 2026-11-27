@@ -35,6 +35,18 @@ Five newer tools in the WhatsApp Web console:
 
 Full details, limits and security notes: **[LADYBUG_BRAIN.md](LADYBUG_BRAIN.md)** and **[AI_AND_FLOWS.md](AI_AND_FLOWS.md)**
 
+## 🎨 Bot commands: `.img`, `.bug`, `.feature` and useful extras
+
+The bot itself gained a set of chat commands that customers can use in any chat:
+
+- **`.img <prompt>`** (aliases `.imagine` `.draw` `.art` `.gen`) draws a picture and sends it back. It walks a provider chain: **your own endpoint** (`LADYBUG_IMG_URL` / `LADYBUG_IMG_KEY` / `LADYBUG_IMG_MODEL`, OpenAI-compatible or a `{prompt}` URL template) → **Pollinations**, which is key-free so the command works out of the box → PrinceTech as a last resort. `LADYBUG_IMG_FREE=0` forbids the public services entirely. Prompts cap at 900 characters, downloads at 8 MB, and the bytes are validated by magic number before anything is sent.
+- **`.bug`** (`.report` `.issue`), **`.feature`** (`.suggest` `.idea`) and **`.feedback`** (`.rate`) file a report from the chat — including the quoted message, if the customer replies to the thing that broke. Each one gets a reference (`BUG-3F2A`, `REQ-…`, `FBK-…`), is saved on the bot, and appears in the owner's Activity feed. The owner reads them in chat with **`.reports`** (`bug` / `feature` / `clear`).
+- **`.help <command>`** now actually explains a command (description, usage, aliases, who may use it) and suggests the nearest name after a typo — the menu had been promising this all along.
+- **`.poll`** builds a native WhatsApp poll, **`.define`** looks a word up on Wiktionary, **`.wiki`** summarises a Wikipedia article, and **`.id`** prints the chat/sender JIDs a customer needs to paste when asking for support.
+- The old random ladybug fact moved from `.bug` to **`.ladybugfact`** so `.bug` could become the report command.
+
+Full command reference, flags and environment variables: **[BOT_COMMANDS.md](BOT_COMMANDS.md)**
+
 ---
 
 ## 💰 Pricing, trial & coins

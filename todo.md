@@ -1,25 +1,28 @@
-# Ladybug Brain — media handling + human takeover
+# Bot commands: .img, .bug, .feature + useful extras
 
-## A. Human takeover / pause (feature 1)
-- [x] Read webBridge.js message flow + how owner-sent messages are detected
-- [x] Add per-chat pause store in wa-book.js (pause, resume, isPaused, list, TTL)
-- [x] Bot side: skip auto-reply when chat paused; emit pause events
-- [x] Auto-pause when the owner sends a message in that chat
-- [x] API endpoints: pause / resume / list paused
-- [x] Console UI: paused pill in the chat header + takeover panel
-- [x] Tests for pause store + gating
-- [x] Docs
+## 1. Build the commands
+- [x] `utils/imageGen.js` — provider chain (owner endpoint → key-free Pollinations → PrinceTech), size/timeout caps
+- [x] `commands/ai/img.js` — `.img <prompt>` with aspect/size flags, replaces `magicstudio.js`
+- [x] `utils/reports.js` — local report store + platform IPC event
+- [x] `commands/general/report.js` — `.bug` and `.feature` (and `.feedback`)
+- [x] `commands/ladybug/bug.js` — rename to `.ladybugfact` so `.bug` is free
+- [x] `commands/general/help.js` — real `.help <command>` (menu promised it)
+- [x] `commands/general/id.js`, `poll.js`, `wiki.js`, `define.js`
+- [x] `commands/owner/reports.js` — `.reports` list/clear for the owner
+- [x] `menu.js` — drop the `help` alias so `.help` reaches the new command
 
-## B. Voice notes & photos (feature 3)
-- [x] Read how webBridge classifies media + what text it gets
-- [x] Brain: detect non-text, reply politely instead of silence
-- [x] Optional transcription hook (env-configurable), graceful when absent
-- [x] Image: acknowledge + ask for text / hand off
-- [x] Tests
-- [x] Docs
+## 2. Platform side
+- [x] `lib/wa-book.js` — `addReport` / `reportsView` / `markReport` / `clearReports`
+- [x] `lib/bots.js` — handle the `report` IPC event → owner activity feed
 
-## C. Ship
-- [x] npm test green (514 assertions, 7 suites)
-- [x] sw.js bump (v14)
-- [x] Commit + push
-- [x] Screenshots
+## 3. Verify
+- [x] `test/bot-commands.test.js` — unit tests for the new logic
+- [x] `test/report-inbox.test.js` — platform inbox + activity feed
+- [x] Wire into `npm test`, run the whole suite
+- [x] Live check: real `.img` render through Pollinations (98 KB JPEG, 4.69 s)
+- [x] Live check: `.define` and `.wiki` against the real APIs
+- [x] Screenshots of the commands in action (`shots/commands-1.png`, `shots/commands-2.png`)
+
+## 4. Document & ship
+- [x] `BOT_COMMANDS.md` + README section
+- [ ] Commit and push to `main`
