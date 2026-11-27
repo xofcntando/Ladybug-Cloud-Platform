@@ -30,7 +30,7 @@ message
    │
    ├─ understand ── tokens · entities · sentiment · urgency
    │
-   ├─ classify ─── 22 intents, weighted cues + phrase patterns
+   ├─ classify ─── 36 intents, weighted cues + phrase patterns
    │
    ├─ retrieve ─── BM25-lite over the owner's FAQs and facts
    │
@@ -49,7 +49,7 @@ Sentiment is a small lexicon plus two structural signals: **shouting** (more tha
 
 ### 2. Intent classification
 
-Twenty-two intents cover the questions a small business actually receives: greeting, goodbye, thanks, pricing, hours, location, contact, payment, delivery, refund, order status, booking, availability, catalog, support, complaint, discount, identity, capabilities, affirm, deny and language.
+Thirty-six intents cover the questions a small business actually receives: greeting, goodbye, thanks, pricing, hours, location, contact, payment, delivery, refund, order status, booking, availability, catalog, support, complaint, discount, identity, capabilities, affirm, deny, language, small talk, jokes, praise, quotes, invoices, payment confirmation, cancellations, rescheduling, warranty, careers, emergencies, social media, repeat orders and introductions.
 
 Each intent is a bag of **weighted cues** plus optional **phrase patterns**. A phrase pattern is worth four points, which is enough to beat a pile of weak single-word cues. `order_status` additionally declares a slot: if the customer asks "where is my order" without a reference number, the bot asks for one and remembers the question across turns.
 
@@ -78,6 +78,63 @@ This is where the engine earns the word "reasoning". The order of the rules is t
 Every call returns a reply, an intent, a confidence score, an action (`answer`, `clarify`, `slot`, `escalate`, `gap`, `ignore`), the updated session, a mood, an optional gap, and the trace.
 
 ---
+
+## Zero-setup upgrade
+
+The second wave of the brain adds capability without adding configuration. There is no new
+field to fill in, no new key and no new switch: everything below runs from the profile the
+owner has already saved, and when the profile is silent it degrades to a specific, safe
+hand-off instead of guessing. A business whose profile contains nothing but a name still gets
+a working bot.
+
+**Language awareness.** Messages are scanned for Shona and Ndebele vocabulary. When one is
+detected, the safe phrases - hello, thanks, goodbye, yes, no and the "let me get this right"
+line - are answered in that language, while every factual sentence still comes from the
+owner's profile verbatim. That is deliberate: a translated price is a liability, a translated
+greeting is hospitality. Detection is a small keyword vote, so it costs nothing and never
+calls out to a service.
+
+**Small talk and personality.** "How are you", "tell me a joke" and plain praise are handled
+with a small, deterministic pack. Jokes rotate by a hash of the chat and turn, so the same
+customer does not get the same line twice in a row. Praise is returned as a `praise` flag on
+the result, ready for a future "what customers loved" view.
+
+**The new business intents.** Each one either answers from an existing profile fact or gives
+a concrete hand-off:
+
+| Intent | What the customer said | What the bot does |
+| --- | --- | --- |
+| `quote` | "I need a quote for 5 boxes" | Keeps the quantity and unit, asks what is needed, escalates |
+| `invoice` | "send me an invoice" | Asks for the reference, escalates |
+| `payment_confirmation` | "I have paid, here is the proof" | Acknowledges, escalates for reconciliation |
+| `cancel` | "cancel my order" | Apologises, escalates the cancellation and any refund |
+| `reschedule` | "can I move my appointment" | Asks for the new day and time, escalates |
+| `warranty` | "is there a warranty" | Quotes the refund policy when written, else escalates |
+| `careers` | "are you hiring" | Invites a CV, escalates |
+| `emergency` | "this is an emergency" | Alerts the team immediately and offers the phone |
+| `social` | "do you have Instagram" | Points at the website when set, else asks which platform |
+| `repeat_order` | "same order as last time" | Asks for the item and quantity or the last reference |
+| `introduce` | "my name is Tino" | Greets the customer by name |
+
+**Customer memory.** The session now remembers a name the customer volunteers, how many times
+they have come back, the topics they raised and any order reference they have already given.
+A returning customer is welcomed back by name, and "where is my order" no longer re-asks for a
+reference that was supplied two messages earlier.
+
+**Escalation recap.** When a chat is handed to a human, the reply now carries a compact recap
+of what is already known - reference, quantity, amount, date and time - so the person picking
+it up is not starting cold.
+
+**Synonym-boosted retrieval.** A small built-in thesaurus ("cost" to "price", "shipping" to
+"delivery", "shop" to "store") is consulted only as a second pass when the direct query
+misses. A confident first-pass hit is never disturbed, so existing answers keep their exact
+confidence; the retry is recorded as a `synonyms` step in the trace. A synonym hit is accepted
+at a lower raw-score bar because the expanded query is longer, but only when term coverage is
+still strong.
+
+Every new step is visible in the console's **Try it** box: the trace now includes `language`
+and, when used, `synonyms`, alongside the existing `understand`, `intent`, `retrieve`,
+`policy` and `slot` steps.
 
 ## The business profile
 
@@ -147,7 +204,7 @@ Settings live in `db.data.waBook[botId].auto.brain`, so they inherit the existin
 | `app.js` | `GET /api/bots/:id/web/brain`, `POST …/brain/test`, `POST …/brain/gaps/clear` |
 | `public/js/wa-brain.js` | the console panel |
 | `public/js/wa-pause.js` | the "bot paused" pill and the takeover panel |
-| `test/ladybug-brain.test.js` | 156 assertions over the engine and the gap log |
+| `test/ladybug-brain.test.js` | 228 assertions over the engine and the gap log |
 | `test/wa-takeover.test.js` | 60 assertions over pausing and media replies |
 
 ---
@@ -158,7 +215,7 @@ Settings live in `db.data.waBook[botId].auto.brain`, so they inherit the existin
 node test/ladybug-brain.test.js
 ```
 
-The suite covers text normalisation and stemming, entity extraction, sentiment including shouting and urgency, profile normalisation and caps, opening-hours state across open/closed/next-day/timezone, retrieval ranking and the tiny-corpus case, every intent, the weigh step, escalation for anger / human requests / complaints, slot filling across turns, gap emission and the second-miss escalation, ambiguity clarification, session TTL, `preview`, and the `wa-book` settings and gap log including the "brain on without a profile" rejection.
+The suite covers text normalisation and stemming, entity extraction (including names and quantities), sentiment including shouting and urgency, profile normalisation and caps, opening-hours state across open/closed/next-day/timezone, retrieval ranking and the tiny-corpus case, every intent, the weigh step, escalation for anger / human requests / complaints, slot filling across turns, gap emission and the second-miss escalation, ambiguity clarification, session TTL, `preview`, and the `wa-book` settings and gap log including the "brain on without a profile" rejection. The upgrade adds dedicated sections for language detection, name and quantity entities, all fourteen new intents, localized replies, customer memory, the escalation recap, synonym-boosted retrieval, and a "no setup required" block that proves every new intent answers safely from a profile containing nothing but a name.
 
 It runs with a throwaway `DATA_DIR` and touches no network and no real bot.
 

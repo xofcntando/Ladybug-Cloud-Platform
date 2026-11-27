@@ -416,6 +416,127 @@ section('wa-book: the gap log');
   eq('the log can be cleared', book.gapsView(botId).gaps.length, 0);
 }
 
+/* ================================================================== upgrade
+   Zero-setup additions: language awareness, small talk, the new business intents,
+   customer memory and the synonym-boosted retrieval fallback. Every one of these works
+   from the existing profile - none of them adds a field the owner has to fill in.
+   ------------------------------------------------------------------ */
+section('language detection');
+{
+  eq('English is the default', brain.detectLanguage('what is the price'), 'en');
+  eq('Shona is detected', brain.detectLanguage('mhoro, makadii?'), 'sn');
+  eq('Ndebele is detected', brain.detectLanguage('sawubona, unjani?'), 'nd');
+  ok('Shona and Ndebele phrase packs exist', !!brain.LANG.sn && !!brain.LANG.nd);
+  ok('there is a joke pack', Array.isArray(brain.JOKES) && brain.JOKES.length >= 5);
+}
+
+section('name and quantity entities');
+{
+  eq('a name is captured', brain.entities('my name is Tino').name, 'Tino');
+  eq('a name after "this is ... speaking"', brain.entities('this is Rudo speaking').name, 'Rudo');
+  eq('a complaint is not a name', brain.entities('this is terrible, I am very angry').name, undefined);
+  eq('a phone number is not a name', brain.entities('call me on 077 123 4567').name, undefined);
+  const q = brain.entities('I need 5 boxes');
+  eq('quantity is captured', q.quantity, 5);
+  eq('the unit is kept', q.unit, 'boxes');
+}
+
+section('new zero-setup intents');
+{
+  const t = (msg, session) => brain.think(PROFILE, msg, session || null, { now: MON_10, jid: 'x' });
+  let r;
+
+  r = t('how are you'); eq('small talk is recognised', r.intent, 'how_are_you'); ok('small talk does not escalate', !r.escalate);
+  r = t('tell me a joke'); eq('jokes are recognised', r.intent, 'joke'); ok('the joke is followed by an offer to help', /Anyway/.test(r.reply), r.reply);
+  r = t('great service, well done'); eq('praise is recognised', r.intent, 'feedback'); ok('praise is flagged', r.praise);
+  r = t('I need a quote for 5 boxes'); eq('quotes are recognised', r.intent, 'quote'); ok('the quote keeps the quantity', /5 boxes/.test(r.reply), r.reply); ok('a quote escalates', r.escalate);
+  r = t('can you send me an invoice'); eq('invoices are recognised', r.intent, 'invoice'); ok('an invoice escalates', r.escalate);
+  r = t('I have paid, here is the proof'); eq('payment confirmation is recognised', r.intent, 'payment_confirmation'); ok('a payment confirmation escalates', r.escalate);
+  r = t('I want to cancel my order'); eq('cancellations are recognised', r.intent, 'cancel'); ok('a cancellation escalates', r.escalate);
+  r = t('can I reschedule my appointment'); eq('reschedules are recognised', r.intent, 'reschedule'); ok('a reschedule escalates', r.escalate);
+  r = t('is there a warranty on this'); eq('warranty is recognised', r.intent, 'warranty'); ok('warranty uses the refund policy', /14 days/.test(r.reply), r.reply);
+  r = t('are you hiring'); eq('careers are recognised', r.intent, 'careers'); ok('careers escalates', r.escalate);
+  r = t('this is an emergency, I need help now'); eq('emergencies are recognised', r.intent, 'emergency'); ok('an emergency escalates', r.escalate); ok('an emergency offers the phone', /\+263/.test(r.reply), r.reply);
+  r = t('do you have instagram'); eq('social is recognised', r.intent, 'social'); ok('social points at the website', /ladybug\.studio/.test(r.reply), r.reply);
+  r = t('same order as last time'); eq('repeat orders are recognised', r.intent, 'repeat_order'); ok('a repeat order escalates', r.escalate);
+  r = t('my name is Tino'); eq('introductions are recognised', r.intent, 'introduce'); ok('the introduction uses the name', /Tino/.test(r.reply), r.reply);
+}
+
+section('localized replies');
+{
+  let r = brain.think(PROFILE, 'mhoro', null, { now: MON_10, jid: 'x' });
+  eq('a Shona greeting is still a greeting', r.intent, 'greeting');
+  ok('the Shona greeting is used', /^Mhoro/.test(r.reply), r.reply);
+  ok('the business name is still included', /Ladybug Studio/.test(r.reply), r.reply);
+
+  r = brain.think(PROFILE, 'sawubona', null, { now: MON_10, jid: 'x' });
+  ok('the Ndebele greeting is used', /^Sawubona/.test(r.reply), r.reply);
+
+  r = brain.think(PROFILE, 'ngiyabonga', null, { now: MON_10, jid: 'x' });
+  eq('Ndebele thanks are recognised', r.intent, 'thanks');
+  ok('Ndebele thanks are answered in kind', /Ngiyabonga/.test(r.reply), r.reply);
+
+  r = brain.think(PROFILE, 'mazvita', null, { now: MON_10, jid: 'x' });
+  eq('Shona thanks are recognised', r.intent, 'thanks');
+
+  r = brain.think(PROFILE, 'yebo', null, { now: MON_10, jid: 'x' });
+  eq('Ndebele yes is recognised', r.intent, 'affirm');
+
+  r = brain.think(PROFILE, 'aiwa', null, { now: MON_10, jid: 'x' });
+  eq('Ndebele no is recognised', r.intent, 'deny');
+
+  r = brain.think(PROFILE, 'sara zvakanaka', null, { now: MON_10, jid: 'x' });
+  eq('Shona goodbye is recognised', r.intent, 'goodbye');
+}
+
+section('customer memory');
+{
+  const a = brain.think(PROFILE, 'my name is Tino', null, { now: MON_10, jid: 'x' });
+  eq('the customer name is remembered', a.session.name, 'Tino');
+  const b = brain.think(PROFILE, 'hi', a.session, { now: MON_10 + 1000, jid: 'x' });
+  ok('a returning customer is welcomed back', /Welcome back/.test(b.reply), b.reply);
+  ok('the returning greeting uses the name', /Tino/.test(b.reply), b.reply);
+
+  const o1 = brain.think(PROFILE, 'my order number is AB-1234', null, { now: MON_10, jid: 'x' });
+  eq('an order reference is remembered', o1.session.slots.order, 'AB-1234');
+  const o2 = brain.think(PROFILE, 'where is my order', o1.session, { now: MON_10 + 1000, jid: 'x' });
+  eq('a known reference is not asked for again', o2.action, 'answer');
+  ok('the known reference is echoed', /AB-1234/.test(o2.reply), o2.reply);
+}
+
+section('escalation recap');
+{
+  const r = brain.think(PROFILE, 'I want to speak to a human about order AB-1234', null, { now: MON_10, jid: 'x' });
+  ok('the hand-off still escalates', r.escalate);
+  ok('the hand-off carries the reference', /reference AB-1234/.test(r.reply), r.reply);
+}
+
+section('synonym-boosted retrieval');
+{
+  const syn = brain.normalizeProfile({ name: 'Acme', faqs: [{ q: 'What is the price?', a: 'It is USD 20.' }] });
+  const r = brain.think(syn, 'what is the cost', null, { now: MON_10, jid: 'x' });
+  ok('a synonym finds the FAQ', /USD 20/.test(r.reply), r.reply);
+  ok('the synonym pass is recorded in the trace', r.trace.some((s) => s.step === 'synonyms'));
+
+  const direct = brain.think(PROFILE, 'where is my data hosted', null, { now: MON_10, jid: 'x' });
+  ok('a confident direct hit is not disturbed', !direct.trace.some((s) => s.step === 'synonyms'));
+}
+
+section('no setup required');
+{
+  // A profile with nothing but a name: every new intent must still give a safe answer.
+  const bare = brain.normalizeProfile({ name: 'Bare Co' });
+  const t = (msg) => brain.think(bare, msg, null, { now: MON_10, jid: 'x' });
+  let r;
+
+  r = t('how are you'); eq('small talk needs no profile', r.action, 'answer');
+  r = t('tell me a joke'); eq('a joke needs no profile', r.action, 'answer');
+  r = t('I need a quote'); eq('a quote needs no profile', r.action, 'answer'); ok('a quote escalates without a profile', r.escalate);
+  r = t('I want to cancel my order'); eq('a cancellation needs no profile', r.action, 'answer'); ok('a cancellation escalates without a profile', r.escalate);
+  r = t('this is an emergency'); eq('an emergency needs no profile', r.action, 'answer'); ok('an emergency escalates without a profile', r.escalate);
+  r = t('are you hiring'); eq('careers need no profile', r.action, 'answer'); ok('careers escalate without a profile', r.escalate);
+}
+
 /* ------------------------------------------------------------------ summary */
 console.log('\n' + (fail ? '\x1b[31m' : '\x1b[32m') + pass + ' passed, ' + fail + ' failed\x1b[0m\n');
 if (fail) process.exitCode = 1;
