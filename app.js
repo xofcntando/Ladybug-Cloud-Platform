@@ -22,6 +22,10 @@ try { console.log('[session-fix] hook:', installer.ensureSessionFix()); } catch 
 const sessiongen = require('./lib/sessiongen');
 const FileSessionStore = require('./lib/session-store');
 const billing = require('./lib/billing');
+const plans = require('./lib/plans');
+const usage = require('./lib/usage');
+const snippets = require('./lib/snippets');
+const customCommands = require('./lib/customcommands');
 const payments = require('./lib/payments');
 const mongoSync = require('./lib/mongo-sync');
 const envvars = require('./lib/envvars');
@@ -168,6 +172,7 @@ function botView(bot, viewer) {
     coinPaidUntil: bot.coinPaidUntil || null,
     suspendedReason: bot.suspendedReason || null,
     envCount: bot.env ? Object.keys(bot.env).length : 0,
+    commandCount: (bot.customCommands || []).length,
     resources: st.resources || null,
     team: t,
     owner: bot.userId,
@@ -557,7 +562,12 @@ app.post('/api/account/webhooks/:id/:action(enable|disable)', requireAuth, (req,
 
 // ---------------------------------------------------------------- billing / coins
 app.get('/api/billing', requireAuth, (req, res) => {
-  res.json({ ...billing.summary(req.user), zigPerUsd: payments.get().zigPerUsd });
+  res.json({
+    ...billing.summary(req.user),
+    // Plan limits, the grace window and the upgrade ladder live in lib/plans.js.
+    plan: plans.summary(req.user),
+    zigPerUsd: payments.get().zigPerUsd,
+  });
 });
 
 app.post('/api/coins/claim', requireAuth, (req, res) => {
@@ -565,6 +575,7 @@ app.post('/api/coins/claim', requireAuth, (req, res) => {
   if (!r.ok) {
     return res.status(429).json({ error: 'You already claimed today. Come back later!', nextClaimAt: r.nextClaimAt });
   }
+  try { usage.record(req.user.id, 'claims', 1); } catch (e) { /* ignore */ }
   db.save();
   res.json({ ok: true, ...r, billing: billing.summary(req.user) });
 });
@@ -640,6 +651,90 @@ app.post('/api/billing/slots', requireAuth, (req, res) => {
 // Public: USD and ZiG prices for the pricing page.
 app.get('/api/prices', (req, res) => {
   res.json(payments.prices());
+});
+
+// ---------------------------------------------------------------- plans, usage & invoices
+// Monetization, customer-facing half: what each plan includes, how much of it is
+// used this month, and a receipt for every payment ever submitted.
+app.get('/api/plans', requireAuth, (req, res) => {
+  res.json({ plans: plans.catalog(), current: plans.summary(req.user) });
+});
+
+app.get('/api/billing/usage', requireAuth, (req, res) => {
+  res.json(usage.view(req.user));
+});
+
+app.get('/api/billing/invoices', requireAuth, (req, res) => {
+  res.json(usage.invoices(req.user));
+});
+
+app.get('/api/billing/invoices/:id', requireAuth, (req, res) => {
+  const r = usage.invoice(req.user, String(req.params.id));
+  if (!r) return res.status(404).json({ error: 'Invoice not found' });
+  res.json(r);
+});
+
+// Switch plan. With a checkout URL configured we hand back the link; otherwise we
+// record the request and point the user at the normal payment flow.
+app.post('/api/billing/plan', requireAuth, (req, res) => {
+  const key = String((req.body || {}).key || '');
+  const plan = plans.view(key);
+  if (!plan || plan.usd <= 0) {
+    return res.status(400).json({ error: `Choose a paid plan: ${plans.PAID.join(', ')}.` });
+  }
+  const cur = plans.summary(req.user);
+  if (cur.key === key) return res.status(409).json({ error: `You are already on ${plan.name}.`, plan: cur });
+  req.user.planRequestedKey = key;
+  req.user.planRequestedAt = Date.now();
+  db.save();
+  activity.log(req.user.id, { type: 'billing', title: 'Plan change requested', detail: `${plan.name} - $${plan.usd}/month.` });
+  const url = billing.cfg.paymentUrl;
+  if (url) {
+    return res.json({
+      ok: true,
+      url: `${url}${url.includes('?') ? '&' : '?'}plan=${key}&client_reference_id=${encodeURIComponent(req.user.username)}`,
+    });
+  }
+  res.json({
+    ok: true,
+    manual: true,
+    item: key,
+    plan,
+    message: `${plan.name} is $${plan.usd}/month. Submit the payment on the Pay page and it switches on as soon as we confirm it.`,
+  });
+});
+
+// ---------------------------------------------------------------- saved replies (snippets)
+// Belong to the account, not a bot: the same answers follow you across numbers.
+app.get('/api/snippets', requireAuth, (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const base = snippets.view2(req.user.id);
+  res.json(q ? { ...base, snippets: snippets.search(req.user.id, q), query: q } : base);
+});
+
+app.post('/api/snippets', requireAuth, (req, res) => {
+  const r = snippets.create(req.user.id, req.body);
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
+  activity.log(req.user.id, { type: 'account', title: 'Saved reply created', detail: `/${r.snippet.shortcut}` });
+  res.status(201).json({ ok: true, snippet: r.snippet });
+});
+
+app.patch('/api/snippets/:id', requireAuth, (req, res) => {
+  const r = snippets.update(req.user.id, req.params.id, req.body);
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
+  res.json({ ok: true, snippet: r.snippet });
+});
+
+app.delete('/api/snippets/:id', requireAuth, (req, res) => {
+  if (!snippets.remove(req.user.id, req.params.id)) return res.status(404).json({ error: 'Snippet not found' });
+  res.json({ ok: true });
+});
+
+// Called when the console inserts a snippet: counts the use and returns the filled text.
+app.post('/api/snippets/:id/use', requireAuth, (req, res) => {
+  const r = snippets.use(req.user.id, req.params.id, (req.body || {}).context);
+  if (!r) return res.status(404).json({ error: 'Snippet not found' });
+  res.json({ ok: true, ...r });
 });
 
 // Signed-in users: prices plus the admin's bank details to pay into.
@@ -817,7 +912,7 @@ app.delete('/api/admin/messages/:userId', requireAdmin, (req, res) => {
 // ---------------------------------------------------------------- payment submissions
 // A user reports a transfer ("I paid"); the admin approves it in one click and the
 // plan is switched on automatically, instead of hand-editing the user row.
-const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', 'envvars', 'alerts', 'uptime', 'api', ...billing.cfg.packs.map((p) => p.key)];
+const PAY_ITEMS = ['unlimited', 'autoclaim', 'slot', 'envvars', 'alerts', 'uptime', 'api', ...plans.PAID.filter((k) => k !== 'starter'), ...billing.cfg.packs.map((p) => p.key)];
 
 function paymentView(x) {
   const u = db.findUserById(x.userId);
@@ -834,7 +929,14 @@ function applyPurchase(u, item, qty) {
   if (item === 'unlimited') {
     const base = u.subscriptionUntil && u.subscriptionUntil > at ? u.subscriptionUntil : at;
     u.subscriptionUntil = base + billing.cfg.subscriptionDays * billing.DAY;
+    plans.grantPlan(u, 'starter', billing.cfg.subscriptionDays);
     return `Unlimited for ${billing.cfg.subscriptionDays} days`;
+  }
+  if (plans.PLANS[item] && item !== 'free') {
+    const r = plans.grantPlan(u, item, plans.PLANS[item].days());
+    u.planRequestedKey = null;
+    u.planRequestedAt = null;
+    return `${plans.PLANS[item].name} plan for ${r ? r.days : 0} days`;
   }
   if (item === 'autoclaim') {
     billing.grantAutoClaim(u, billing.cfg.autoClaimDays);
@@ -1379,6 +1481,7 @@ function startBotFor(bot, fallbackUser) {
   db.updateBot(bot.id, { status: 'running', suspendedReason: null, ...(auth.until ? { coinPaidUntil: auth.until } : {}) });
   const r = bots.start(db.findBotById(bot.id));
   if (!r.ok) return { code: 400, body: { error: r.error } };
+  try { usage.record(bot.userId, 'botStarts', 1); } catch (e) { /* ignore */ }
   return { code: 200, body: { ok: true, preparing: !!r.preparing, message: r.message, status: bots.status(bot.id) } };
 }
 
@@ -1599,6 +1702,102 @@ app.post('/api/bots/:id/web/clear', requireAuth, ownWeb('clearChat'));
 app.get('/api/bots/:id/web/radar', requireAuth, ownWeb('radar'));
 app.get('/api/bots/:id/web/info', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.info(b, req, res); });
 app.get('/api/bots/:id/web/stream', requireAuth, (req, res) => { const b = ownBot(req, res); if (b) webconsole.stream(b, req, res, req.user.id); });
+
+// ---------------------------------------------------------------- bulk bot actions
+// One click to start / stop / restart several bots. Each bot is still checked on
+// its own, so a batch can partly succeed (WhatsApp-safety guardrails apply).
+app.post('/api/bots/bulk', requireAuth, (req, res) => {
+  const body = req.body || {};
+  const action = String(body.action || '');
+  if (!['start', 'stop', 'restart'].includes(action)) {
+    return res.status(400).json({ error: 'action must be "start", "stop" or "restart".' });
+  }
+  const ids = Array.isArray(body.ids) ? [...new Set(body.ids.map(String))] : [];
+  if (!ids.length || ids.length > 25) return res.status(400).json({ error: 'ids must be 1-25 bot ids.' });
+  const results = ids.map((id) => {
+    const bot = db.findBotById(id);
+    if (!bot || bot.userId !== req.user.id) return { id, ok: false, status: 404, error: 'Bot not found' };
+    const r = action === 'start' ? startBotFor(bot, req.user) : action === 'stop' ? stopBotFor(bot) : restartBotFor(bot, req.user);
+    return { id, name: bot.name, ok: r.code < 300, status: r.code, ...(r.code >= 300 ? { error: r.body.error } : {}) };
+  });
+  const succeeded = results.filter((r) => r.ok).length;
+  activity.log(req.user.id, {
+    type: 'bot',
+    title: `Bulk ${action}`,
+    detail: `${succeeded}/${results.length} bots ${action === 'stop' ? 'stopped' : action === 'start' ? 'started' : 'restarted'}.`,
+  });
+  res.status(succeeded === results.length ? 200 : 207).json({ action, results, succeeded, failed: results.length - succeeded });
+});
+
+// ---------------------------------------------------------------- custom command builder
+// The same commands the public API manages, wired to the dashboard so owners can
+// build them without an API key. Needs the API Pass, like the API routes.
+function commandMeta(user) {
+  const limits = billing.apiLimits(user);
+  return {
+    types: customCommands.TYPES,
+    access: customCommands.ACCESS,
+    scope: customCommands.SCOPES,
+    maxPerBot: customCommands.limitFor(limits),
+    placeholders: ['{name}', '{sender}', '{args}', '{arg1}..{arg9}', '{command}', '{group}', '{botname}', '{prefix}', '{date}', '{time}'],
+  };
+}
+
+app.get('/api/bots/:id/commands', requireAuth, (req, res) => {
+  const b = ownBot(req, res);
+  if (!b) return;
+  const list = customCommands.list(b);
+  res.json({ commands: list, total: list.length, meta: commandMeta(req.user), bot: { id: b.id, name: b.name } });
+});
+
+app.post('/api/bots/:id/commands', requireAuth, (req, res) => {
+  const b = ownBot(req, res);
+  if (!b) return;
+  const r = customCommands.create(db, b, billing.apiLimits(req.user), req.body);
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
+  try { customCommands.sync(db.findBotById(b.id), true); } catch (e) { /* bot offline: synced on next start */ }
+  activity.log(req.user.id, { type: 'bot', title: 'Custom command created', detail: `/${r.command.name} on ${b.name}` });
+  res.status(201).json({
+    ok: true,
+    command: r.command,
+    ...(r.secret ? { secret: r.secret, note: 'Store the secret now. It signs every request to your webhook and is not shown again.' } : {}),
+  });
+});
+
+app.patch('/api/bots/:id/commands/:cid', requireAuth, (req, res) => {
+  const b = ownBot(req, res);
+  if (!b) return;
+  const r = customCommands.update(db, b, String(req.params.cid), req.body);
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
+  try { customCommands.sync(db.findBotById(b.id), true); } catch (e) { /* ignore */ }
+  res.json({ ok: true, command: r.command });
+});
+
+app.delete('/api/bots/:id/commands/:cid', requireAuth, (req, res) => {
+  const b = ownBot(req, res);
+  if (!b) return;
+  if (!customCommands.remove(db, b, String(req.params.cid))) return res.status(404).json({ error: 'Command not found' });
+  try { customCommands.sync(db.findBotById(b.id), true); } catch (e) { /* ignore */ }
+  res.json({ ok: true });
+});
+
+app.post('/api/bots/:id/commands/:cid/:action(enable|disable)', requireAuth, (req, res) => {
+  const b = ownBot(req, res);
+  if (!b) return;
+  const r = customCommands.update(db, b, String(req.params.cid), { enabled: req.params.action === 'enable' });
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
+  try { customCommands.sync(db.findBotById(b.id), true); } catch (e) { /* ignore */ }
+  res.json({ ok: true, command: r.command });
+});
+
+app.post('/api/bots/:id/commands/:cid/rotate-secret', requireAuth, (req, res) => {
+  const b = ownBot(req, res);
+  if (!b) return;
+  const r = customCommands.rotateSecret(db, b, String(req.params.cid));
+  if (r.error) return res.status(r.code || 400).json({ error: r.error });
+  try { customCommands.sync(db.findBotById(b.id), true); } catch (e) { /* ignore */ }
+  res.json({ ok: true, secret: r.secret, note: 'The old secret stops working immediately. Update your endpoint.' });
+});
 
 // ---------------------------------------------------------------- linked devices (restore)
 /** Attach a saved device to an existing bot (botId) or to a brand new bot (name). Returns { code, body }. */
@@ -1828,6 +2027,17 @@ app.patch('/api/admin/users/:id', requireAdmin, (req, res) => {
   if (billing.FEATURES[req.body.grantFeature] && typeof req.body.grantFeatureDays === 'number') {
     const field = billing.FEATURES[req.body.grantFeature].field;
     patch[field] = billing.grantFeature(u, req.body.grantFeature, req.body.grantFeatureDays);
+  }
+  if (req.body.grantPlan && plans.PLANS[req.body.grantPlan]) {
+    const days = typeof req.body.grantPlanDays === 'number' ? req.body.grantPlanDays : plans.PLANS[req.body.grantPlan].days();
+    const r = plans.grantPlan(u, req.body.grantPlan, days);
+    patch.planKey = u.planKey;
+    patch.planUntil = u.planUntil;
+    patch.subscriptionUntil = u.subscriptionUntil;
+    patch.botLimit = u.botLimit;
+    patch.planRequestedKey = null;
+    patch.planRequestedAt = null;
+    if (!r) { patch.planKey = null; patch.planUntil = null; }
   }
   if (typeof req.body.extendTrialDays === 'number') {
     const base = u.trialEndsAt && u.trialEndsAt > Date.now() ? u.trialEndsAt : Date.now();

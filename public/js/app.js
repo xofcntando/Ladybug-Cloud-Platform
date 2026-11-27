@@ -242,6 +242,7 @@ const routes = {
   '/login': renderLogin,
   '/register': renderRegister,
   '/dashboard': renderDashboard,
+  '/plans': renderPlans,
   '/status': renderStatus,
   '/admin': renderAdmin,
   '/pay': renderPay,
@@ -257,6 +258,13 @@ const routes = {
   '/verify': renderVerify,
   '/reset': renderReset,
 };
+
+// Plan, usage and invoice screens live in wa-plans.js so this file stays readable.
+async function renderPlans() {
+  if (!state.user) return (location.hash = '#/login');
+  if (window.LBPLANS) return window.LBPLANS.render();
+  $('#view').innerHTML = '<div class="app"><div class="wrap"><p class="hint">Loading plans…</p></div></div>';
+}
 
 // The Activity page and the Command Palette live in their own modules so app.js stays readable.
 function renderActivity() {
@@ -294,6 +302,7 @@ function renderNav() {
     const coins = state.billing ? (state.billing.totalCoins != null ? state.billing.totalCoins : state.billing.coins) : state.user.coins || 0;
     el.innerHTML = `
       <a href="#/dashboard" class="nav-link hide-sm">Dashboard</a>
+      <a href="#/plans" class="nav-link hide-sm">Plan</a>
       <a href="#/activity" class="nav-link hide-sm">Activity</a>
       <a href="#/mail" class="nav-link hide-sm">Mail</a>
       <a href="#/storage" class="nav-link hide-sm">Storage</a>
@@ -954,6 +963,7 @@ async function renderDashboard() {
       </div>
 
       <div id="wallet"><div class="wallet skeleton"></div></div>
+      <div id="planPanel"></div>
       <div id="referral"></div>
 
       <div class="stats-row">
@@ -961,6 +971,15 @@ async function renderDashboard() {
         <div class="stat"><div class="k">Running</div><div class="v" style="color:var(--ok)">${running}</div></div>
         <div class="stat"><div class="k">Stopped</div><div class="v">${state.bots.length - running}</div></div>
         <div class="stat"><div class="k">Billing</div><div class="v" style="font-size:22px;text-transform:capitalize">${esc(({ trial: 'Free trial', subscription: 'Unlimited', coins: 'Daily coins', admin: 'Admin' })[state.user.billingMode] || state.user.plan)}</div></div>
+      </div>
+
+      <div id="bulkBar" class="bulk-bar" hidden>
+        <span class="bulk-count" id="bulkCount">0 selected</span>
+        <button class="btn btn-sm btn-primary" data-bulk="start">Start</button>
+        <button class="btn btn-sm" data-bulk="restart">Restart</button>
+        <button class="btn btn-sm btn-danger-solid" data-bulk="stop">Stop</button>
+        <span class="bulk-spacer"></span>
+        <button class="btn btn-sm btn-ghost" data-bulk="clear">Clear</button>
       </div>
 
       <div id="botsGrid" class="grid grid-3">
@@ -977,9 +996,65 @@ async function renderDashboard() {
 
   $('#newBotBtn').onclick = openNewBot;
   bindBotActions();
+  bindBulk();
   startStatusPolling();
   loadWallet();
   loadReferral();
+  if (window.LBPLANS) window.LBPLANS.mount();
+}
+
+/* --------------------------------------------------- bulk bot actions */
+const bulkSel = new Set();
+
+function bindBulk() {
+  bulkSel.clear();
+  $$('.bot-card').forEach((card) => {
+    const cb = card.querySelector('.bot-pick');
+    if (!cb) return;
+    cb.onchange = () => {
+      if (cb.checked) bulkSel.add(card.dataset.id);
+      else bulkSel.delete(card.dataset.id);
+      card.classList.toggle('picked', cb.checked);
+      syncBulk();
+    };
+  });
+  $$('#bulkBar [data-bulk]').forEach((btn) => {
+    btn.onclick = () => runBulk(btn.dataset.bulk, btn);
+  });
+  syncBulk();
+}
+
+function syncBulk() {
+  const bar = $('#bulkBar');
+  if (!bar) return;
+  bar.hidden = bulkSel.size === 0;
+  const n = $('#bulkCount');
+  if (n) n.textContent = `${bulkSel.size} selected`;
+}
+
+async function runBulk(action, btn) {
+  if (action === 'clear') {
+    bulkSel.clear();
+    $$('.bot-pick').forEach((cb) => { cb.checked = false; cb.closest('.bot-card').classList.remove('picked'); });
+    return syncBulk();
+  }
+  if (!bulkSel.size) return;
+  const label = { start: 'Start', stop: 'Stop', restart: 'Restart' }[action] || action;
+  if (action === 'stop' && !confirm(`Stop ${bulkSel.size} bot${bulkSel.size === 1 ? '' : 's'}?`)) return;
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>';
+  try {
+    const r = await api('/api/bots/bulk', { method: 'POST', body: { action, ids: [...bulkSel] } });
+    const failed = (r.results || []).filter((x) => !x.ok);
+    if (failed.length) toast(`${label}: ${r.succeeded} done, ${r.failed} failed — ${failed[0].error || 'see logs'}`, 'err');
+    else toast(`${label}: ${r.succeeded} bot${r.succeeded === 1 ? '' : 's'}`, 'ok');
+    setTimeout(renderDashboard, 800);
+  } catch (e) {
+    toast(e.message, 'err');
+    btn.disabled = false;
+    btn.innerHTML = old;
+  }
 }
 
 async function loadReferral() {
@@ -1041,6 +1116,7 @@ function botCard(b) {
     : '';
   return `
   <div class="bot-card is-${b.status} ${isOwner ? '' : 'is-shared'}" data-id="${b.id}">
+    ${isOwner ? `<label class="bot-pick-wrap" title="Select for bulk actions"><input type="checkbox" class="bot-pick" aria-label="Select ${esc(b.name)}" /></label>` : ''}
     <div class="bot-top">
       <div class="bot-ava"><span>${initial}</span><i class="bot-dot ${b.status}"></i></div>
       <div class="bot-id">
@@ -1078,6 +1154,7 @@ function botCard(b) {
       ${isOwner ? `<button class="btn btn-ghost" data-act="logs">Logs</button>` : ''}
       <button class="btn btn-ghost" data-act="uptime" title="Uptime history">Uptime</button>
       ${isOwner ? `<button class="btn btn-ghost" data-act="env" title="Custom bot settings (paid)">Settings${b.envCount ? ` (${b.envCount})` : ''}</button>` : ''}
+      ${isOwner ? `<button class="btn btn-ghost" data-act="commands" title="Build !commands for this bot">Commands${b.commandCount ? ` (${b.commandCount})` : ''}</button>` : ''}
       <button class="btn btn-ghost" data-act="team" title="People with access to this bot">Team${t.count > 1 ? ` (${t.count})` : ''}</button>
       <span class="bot-actions-spacer"></span>
       ${isOwner
@@ -1105,6 +1182,10 @@ async function handleBotAction(id, act, btn) {
   if (act === 'logs') return openLogs(bot);
   if (act === 'edit') return openEditBot(bot);
   if (act === 'env') return openEnvVars(bot);
+  if (act === 'commands') {
+    if (window.LBCMDS) return window.LBCMDS.open(bot);
+    return toast('Command builder not loaded', 'err');
+  }
   if (act === 'uptime') return openUptime(bot);
   if (act === 'team') return openTeam(bot);
   if (act === 'leave') {
@@ -1393,7 +1474,9 @@ async function renderWebConsole() {
         <div class="wa-thread" id="waThread"></div>
         <div class="wa-attach" id="waAttach" hidden></div>
         <div class="wa-reply" id="waReply" hidden></div>
+        <div class="wa-snips" id="waSnips" hidden></div>
         <form class="wa-compose" id="waForm" hidden>
+          <button type="button" class="wa-icon-btn" id="waSnipBtn" title="Saved replies (⚡)"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg></button>
           <button type="button" class="wa-icon-btn" id="waClipBtn" title="Attach photo or file"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M1.800 12.700 12 2.500c2.400-2.400 6.400-2.400 8.800 0s2.400 6.400 0 8.800L11 21.100c-1.700 1.700-4.500 1.700-6.200 0s-1.700-4.500 0-6.200L13.500 6.200l1.400 1.400-8.700 8.700c-.9.900-.9 2.300 0 3.200s2.300.9 3.200 0l9.800-9.800c1.600-1.600 1.600-4.200 0-5.800s-4.200-1.600-5.800 0L3.200 14.100z"/></svg></button>
           <input type="file" id="waFile" accept="image/jpeg,image/png,image/webp,video/mp4,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" hidden />
           <div class="wa-emoji-wrap">
@@ -1427,6 +1510,8 @@ async function renderWebConsole() {
     };
     document.addEventListener('click', (e) => { if (!e.target.closest('.wa-emoji-wrap')) pop.hidden = true; });
   }
+  // Saved replies: the ⚡ button next to the composer opens the account's reply library.
+  if (window.LBSNIPS) window.LBSNIPS.attach();
 
   const base = `/api/bots/${bot.id}/web`;
   const S = { chats: [], jid: null, msgs: [], replyTo: null, q: '', tab: 'all', conn: null, me: null, wa: null, groupSize: null, typingOn: false, find: '' };

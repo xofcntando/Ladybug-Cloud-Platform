@@ -21,6 +21,7 @@
     { label: 'WhatsApp console', sub: 'Chats, groups, status', href: '#/web', icon: '💬', keys: 'whatsapp web chat messages' },
     { label: 'Storage', sub: 'Your drive and uploads', href: '#/storage', icon: '🗂', keys: 'drive files upload' },
     { label: 'Activity', sub: 'Audit trail and notifications', href: '#/activity', icon: '🔔', keys: 'history log events audit' },
+    { label: 'Plan & usage', sub: 'Your plan, meters and invoices', href: '#/plans', icon: '\ud83d\udcca', keys: 'plan usage limits invoices receipts billing upgrade' },
     { label: 'Pay', sub: 'Coins, subscription, ZiG prices', href: '#/pay', icon: '💳', keys: 'billing payment coins subscribe' },
     { label: 'Settings', sub: 'Profile, password, sessions', href: '#/settings', icon: '⚙️', keys: 'account password security sessions' },
     { label: 'Developers', sub: 'API keys and webhooks', href: '#/developers', icon: '🧩', keys: 'api key webhook docs' },

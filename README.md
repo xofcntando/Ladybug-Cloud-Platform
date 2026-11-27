@@ -59,6 +59,33 @@ Full command reference, flags and environment variables: **[BOT_COMMANDS.md](BOT
 
 ---
 
+## 📊 Plans, usage meters & invoices
+
+Four named plans sit on top of the coin/trial system, so nothing that already works changes — a plan is just a longer, bigger subscription.
+
+| Plan | Price | Bots | Messages / month | AI replies / month | Chat history | API Pass |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Free** | $0 (7-day trial) | 1 | 2,000 | 200 | 7 days | — |
+| **Starter** | $3 / 30 days | 1 | 10,000 | 1,000 | 30 days | — |
+| **Pro** | $8 / 30 days | 3 | 60,000 | 6,000 | 90 days | included |
+| **Studio** | $20 / 30 days | 10 | 300,000 | 30,000 | 365 days | included |
+
+- **`#/plans`** is the billing home: this month's meters, a six-month message trend, the four plan cards, and every invoice. The dashboard carries a compact strip with the same numbers, so you never have to go looking.
+- **Buying a plan** (`POST /api/billing/plan`) opens `PAYMENT_URL` when one is configured, otherwise it records the request and points you at the Pay page — the admin approves it in **Admin → Payments** exactly like a subscription. Buying the plan you are already on **stacks** the days; switching plans starts the new one from today.
+- **Metering** (`lib/usage.js`) counts WhatsApp messages the console sends, AI replies, commands, bot starts and coin claims per user per calendar month (`usage["<userId>:<YYYY-MM>"]`). Counters older than six months are pruned automatically. Metering is best-effort: a failed counter never blocks a send.
+- **Soft limits.** Going over a message or AI cap shows an upgrade prompt in the console and on the dashboard; it does not silently drop messages.
+- **Grace period.** When a plan lapses the bots keep running for `GRACE_DAYS` (default **2**) while the dashboard shows a renewal warning. After that normal coin billing resumes.
+- **Invoices.** Every payment — approved, pending or rejected — gets a stable receipt number (`LB-202603-4F2A`) and a printable sheet with the seller block, line item, total in USD and ZiG reference. `GET /api/billing/invoices` and `GET /api/billing/invoices/:id` back the UI.
+- Limits are overridable with `PLAN_FREE_BOTS`, `PLAN_STARTER_USD`, `PLAN_PRO_MESSAGES`, `GRACE_DAYS`, `SNIPPET_LIMIT` and friends — see `lib/plans.js`.
+
+## ⚡ Console UX: saved replies, bulk actions, command builder
+
+- **Saved replies** (`lib/snippets.js`). The ⚡ button in the WhatsApp composer opens a searchable library of answers you reuse. Replies belong to the **account**, so they follow you between numbers. Type `/price` in the composer (or click one) and the reply is inserted with `{name}`, `{first}`, `{group}`, `{bot}`, `{me}`, `{date}` and `{time}` filled in. Six starter replies are suggested on a new account; up to `SNIPPET_LIMIT` (60) per user.
+- **Bulk bot actions.** Every card on the dashboard has a checkbox; select a few and start, restart or stop them in one request (`POST /api/bots/bulk`, up to 25 ids, partial success reported per bot).
+- **Custom command builder.** **Commands** on a bot card opens a form that creates the same `!commands` the public API manages — text, image or webhook, with aliases, who can use it (`everyone`/`admins`/`owner`), where (`any`/`group`/`private`) and a cooldown. Webhook secrets are shown once. Needs the API Pass, same as the API routes; Pro allows 50 commands per bot, free allows none.
+
+---
+
 ## 🏦 Payments, ZiG prices & contact admin
 
 - **Pay page (`#/pay`)**: signed-in users see the admin's **NSB** bank accounts (ZiG `3251650604001`, USD `3251650604451`), their username as the payment reference, and a USD + ZiG price table.
@@ -252,7 +279,10 @@ for transactional email plus the DNS records for real `@remotewire.net` mailboxe
 ## 🔌 API overview
 
 **Auth** `POST /api/auth/register|login|logout`, `GET /api/auth/me`
-**Bots** `GET|POST /api/bots`, `PATCH|DELETE /api/bots/:id`, `POST /api/bots/:id/start|stop|restart`, `GET|DELETE /api/bots/:id/logs`, `GET /api/bots/:id/logs/download`
+**Bots** `GET|POST /api/bots`, `PATCH|DELETE /api/bots/:id`, `POST /api/bots/:id/start|stop|restart`, `POST /api/bots/bulk`, `GET|DELETE /api/bots/:id/logs`, `GET /api/bots/:id/logs/download`
+**Billing** `GET /api/billing`, `GET /api/plans`, `GET /api/billing/usage`, `GET /api/billing/invoices[/:id]`, `POST /api/billing/plan`
+**Saved replies** `GET|POST /api/snippets`, `PATCH|DELETE /api/snippets/:id`, `POST /api/snippets/:id/use`
+**Custom commands** `GET|POST /api/bots/:id/commands`, `PATCH|DELETE /api/bots/:id/commands/:cid`, `POST /api/bots/:id/commands/:cid/enable|disable|rotate-secret`
 **Sessions** `POST /api/session/pair` (body `{phone}`), `GET|DELETE /api/session/pair/:id`
 **Public** `GET /api/status`, `GET /healthz`
 **Admin** `GET /api/admin/stats|users|bots|installer`, `PATCH|DELETE /api/admin/users/:id`, `DELETE /api/admin/bots/:id`, `POST /api/admin/installer/github|upload|deps`

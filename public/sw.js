@@ -7,7 +7,7 @@
      abort the whole install (the old code used addAll(), which is all-or-nothing).
    - Every page module in public/js is listed below; keep this list in sync with index.html.
 */
-const VERSION = 'ladybug-v14';
+const VERSION = 'ladybug-v15';
 
 const SHELL = [
   '/',
@@ -43,7 +43,10 @@ const SHELL = [
   '/js/wa-pro.js',
   '/js/wa-ai.js',
   '/js/wa-flows.js',
-  '/js/wa-brain.js'
+  '/js/wa-brain.js',
+  '/js/wa-plans.js',
+  '/js/wa-snippets.js',
+  '/js/wa-commands.js'
 ];
 
 // Cache each shell URL on its own so one 404 cannot break the install.

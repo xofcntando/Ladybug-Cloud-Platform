@@ -115,7 +115,49 @@ action, a bot, a file in your drive, or a past activity entry.
 
 ---
 
+## 4. Plans, usage meters & invoices
+
+Billing used to be coins-or-subscription. It is now a four-plan ladder — **Free**, **Starter**
+($3), **Pro** ($8) and **Studio** ($20) — layered on top so every existing check keeps working:
+`plans.grantPlan()` writes `planKey`/`planUntil` and mirrors `subscriptionUntil` and `botLimit`,
+which is exactly what `billing.runsFree()`, `billing.botLimitFor()` and `createBotFor()` already
+read. Extra $1 slots still stack on top of a plan.
+
+`#/plans` shows this month's message and AI meters, a six-month trend, the plan cards and the
+invoice table. The dashboard carries a compact strip with the same numbers. Meters warn at 80%
+and turn red when a cap is passed, but limits stay **soft** — nothing is dropped silently.
+
+`lib/usage.js` keeps per-user, per-month counters (`usage["<userId>:<YYYY-MM>"]`) for messages,
+AI replies, commands, bot starts and coin claims, and prunes anything older than six months.
+`record()` is wrapped in try/catch at every call site, so bookkeeping can never break a
+WhatsApp send. Every payment — approved, pending or rejected — becomes a receipt with a stable
+number (`LB-202603-4F2A`) and a printable sheet.
+
+When a plan lapses the bots keep running for a `GRACE_DAYS` (2) window while the UI asks for a
+renewal; after that the normal coin billing takes over.
+
+## 5. Console UX: saved replies, bulk actions, command builder
+
+The WhatsApp console gained a ⚡ button that opens a searchable library of saved replies.
+Replies belong to the account rather than the number, so the same answers follow an owner
+between bots; inserting one fills `{name}`, `{first}`, `{group}`, `{bot}`, `{me}`, `{date}` and
+`{time}` from the chat on screen. A new account is offered six starter replies.
+
+The dashboard can now act on several bots at once: each card has a checkbox and the bulk bar
+sends `POST /api/bots/bulk` with up to 25 ids, reporting partial success per bot.
+
+Custom `!commands` are buildable without an API key. **Commands** on a bot card opens a form for
+text, image and webhook commands with aliases, access (`everyone`/`admins`/`owner`), scope
+(`any`/`group`/`private`) and a cooldown; webhook secrets are displayed exactly once. The same
+`lib/customcommands.js` backs the public API, so both stay in step.
+
 ## Tests
+
+`test/plans-usage.test.js` covers the whole new surface without a server: plan resolution
+(free/trial/subscription/expired/admin), grant stacking vs. switching, extra slots raising the
+bot cap, grace windows, usage recording and caps, month maths and pruning, invoice numbering,
+totals and per-user scoping, and snippet CRUD, validation, the per-user cap, rendering and
+search. It runs as part of `npm test`.
 
 ```bash
 npm test        # unit: 57 WhatsApp assertions + 71 site-wide assertions
