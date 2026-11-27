@@ -399,6 +399,10 @@ async function startBotInner() {
       // Initialize anti-call feature
       handler.initializeAntiCall(sock);
 
+      // Weekly song drop: one song a week to every chat that ran `.weekly on`.
+      // Idempotent, and the timer only acts while this socket is open.
+      try { require('./utils/weeklySongs').start(sock); } catch (e) { console.error('[weekly]', e.message); }
+
       // Cleanup old chats (keep only active ones, e.g., last touched <1 day)
       const now = Date.now();
       for (const [jid, chatMsgs] of store.messages.entries()) {

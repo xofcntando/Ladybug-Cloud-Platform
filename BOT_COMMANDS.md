@@ -147,6 +147,46 @@ Aliases: `.jid` `.chatid` `.whoami`. Prints the chat JID, the chat type, your ow
 number, the group name and member count, and the participant of the message you replied
 to. This is what to paste when asking for help with a group.
 
+## 🎵 `.weekly` — one song a week
+
+```
+.weekly                 this week's pick
+.weekly love            this week's pick from the love list
+.weekly zim             Zimbabwe 🇿🇼 — sungura, chimurenga, Zimdancehall
+.weekly next            what lands next Monday
+.weekly all             the eight categories
+.weekly on              post a new song here every week
+.weekly off             stop the weekly drop
+.weekly status          who is following (owner)
+.weekly send            deliver this week's song now (owner)
+```
+
+Aliases: `.songoftheweek` `.weeklysong` `.drop` `.sotw`
+
+Eight categories ship with the bot — **love**, **zim**, **gospel**, **amapiano**, **afro**,
+**reggae**, **hiphop**, **oldies** — each with a dozen real, well-known recordings and one
+line about why it is worth four minutes. Nothing to configure: no API key, no playlist, no
+cron entry.
+
+The pick is driven by the **ISO week number**, so it is the same all week, it survives a
+restart, and it moves on by itself every Monday. A call with no category rotates the
+category too, so a chat that never passes an argument still gets variety instead of twelve
+love songs in a row. Inside a category the list advances one song per week, with a
+per-category offset so the eight lists do not all turn over together.
+
+What arrives is a card: title, artist, year, the reason, and two search links (YouTube and
+Spotify). Audio is deliberately not attached — `.song <title>` already downloads it, and a
+weekly broadcast that depended on eight third-party download APIs would fail half the time.
+
+`.weekly on` is what makes it *weekly*. The bot keeps a small subscriber list in
+`weekly-songs.json` next to its data, and a timer started when the socket opens posts the
+new pick to every chat that has not had it yet. A chat is marked as served per week, so a
+restart cannot double-post; a chat that fails is retried on the next pass and reported in
+`.weekly status`. In a group only an admin (or the owner) can switch it on or off.
+
+The timer is started from `index.js` on `connection.open`, checks every 20 minutes, and
+only acts while the socket is open. It never keeps the process alive on its own.
+
 ## 🐞 `.ladybugfact` — the old `.bug`
 
 The random ladybug fact that used to live at `.bug` is now `.ladybugfact`
@@ -165,5 +205,10 @@ The image chain lives in `bots/ladybug/utils/imageGen.js` (`generate`, `parseArg
 (`addReport`, `reportsView`, `markReport`, `clearReports`); `lib/bots.js` turns the
 `{type:'wa', event:'report'}` IPC message into an activity-feed entry.
 
-Tests: `node test/bot-commands.test.js` and `node test/report-inbox.test.js`, both part of
-`npm test`.
+The weekly song drop lives in `bots/ladybug/utils/weeklySongs.js` (`pick`, `card`,
+`subscribe`, `due`, `deliver`, `start`) and is mirrored on the platform by
+`lib/bot-shims/weeklySongs.js`; `lib/installer.js` copies it into every bot and re-applies
+the `index.js` start hook after an upstream download.
+
+Tests: `node test/bot-commands.test.js`, `node test/report-inbox.test.js` and
+`node test/weekly-songs.test.js`, all part of `npm test`.
