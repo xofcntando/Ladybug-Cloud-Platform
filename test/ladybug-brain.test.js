@@ -96,6 +96,8 @@ section('sentiment and urgency');
   eq('a plain question is neutral', brain.sentiment('what are your prices').mood, 'neutral');
   ok('an angry message is negative', brain.sentiment('this is terrible and I am angry').negative);
   ok('two negatives tip the mood', brain.sentiment('useless and broken').mood === 'upset');
+  ok('stemmed negatives still count', brain.sentiment('I have been waiting and nobody replies').negative);
+  ok('delayed is scored negative', brain.sentiment('the delivery was delayed').score >= 1);
   ok('praise reads happy', brain.sentiment('great work, thank you').mood === 'happy');
   ok('asap is urgent', brain.sentiment('I need this asap').urgent);
   ok('double bang is urgent', brain.sentiment('call me!!').urgent);
@@ -189,6 +191,16 @@ section('intents and answers');
   r = t('are you open', MON_18);
   ok('hours say we are closed in the evening', /closed right now/.test(r.reply), r.reply);
   ok('hours name the next day', /Tuesday/.test(r.reply), r.reply);
+
+  // A named day must be answered for that day, not for today (MON_10 is a Monday).
+  r = t('are you open on Saturday?');
+  ok('a named closed day is answered for that day', /closed on Saturdays/.test(r.reply), r.reply);
+  r = t('are you open on Tuesday?');
+  ok('a named open day is answered for that day', /open on Tuesday/.test(r.reply), r.reply);
+  r = t('are you open on Monday?');
+  ok('the named day is marked as today', /Monday \(today\)/.test(r.reply), r.reply);
+  r = t('what time do you close on sunday');
+  ok('a named day works with other phrasings', /closed on Sundays/.test(r.reply), r.reply);
 
   r = t('where are you located');
   eq('location is recognised', r.intent, 'location');

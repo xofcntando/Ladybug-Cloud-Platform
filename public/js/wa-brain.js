@@ -24,7 +24,12 @@
 
   function dlg(html) {
     document.querySelectorAll('#waApp > .wa-dialog-back').forEach((n) => n.remove());
-    return C.dialog(html);
+    const back = C.dialog(html);
+    // The brain panel is wider than a standard dialog; let the dialog grow to fit it
+    // instead of clipping the panel's left edge.
+    const card = back && back.querySelector ? back.querySelector('.wa-dialog') : null;
+    if (card) card.classList.add('wa-dialog-brain');
+    return back;
   }
 
   function blank() {
@@ -227,7 +232,13 @@
     </div>`;
   }
 
-  function open() {
+  async function open() {
+    // Always refresh on open so the gap list and any edits from another tab are current.
+    try {
+      await load();
+    } catch (e) {
+      if (!cfg) { C.toast(e.message || 'Could not load the brain'); return null; }
+    }
     const d = dlg(panel());
     wire(d);
     return d;

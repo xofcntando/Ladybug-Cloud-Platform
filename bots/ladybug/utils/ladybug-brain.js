@@ -103,21 +103,24 @@ function entities(text) {
 
 /* ------------------------------------------------------------------ sentiment */
 
-const NEG = ('angry furious annoyed terrible awful bad worst useless broken scam fake rubbish ' +
+// Lexicons are stemmed the same way the message is, so "waiting" matches "wait" and
+// "delayed" matches "delay". Without this the stemmer silently defeated the sentiment pass.
+const lex = (str) => new Set(str.split(' ').filter(Boolean).map(stem));
+const NEG = lex('angry furious annoyed terrible awful bad worst useless broken scam fake rubbish ' +
   'disappointed frustrated unacceptable ridiculous pathetic disgusting hate upset ' +
-  'wrong failed failing fail error problem issue complaint complain refund cancel late delayed never ' +
-  'still waiting ignored').split(' ');
-const URGENT = ('urgent urgently asap immediately now emergency quickly hurry today tonight').split(' ');
-const POS = ('great good nice perfect excellent amazing love happy satisfied wonderful brilliant thanks').split(' ');
+  'wrong failed failing fail error problem issue complaint complain refund cancel late delayed delay ' +
+  'still waiting wait ignore ignored nobody');
+const URGENT = lex('urgent urgently asap immediately now emergency quickly hurry today tonight');
+const POS = lex('great good nice perfect excellent amazing love happy satisfied wonderful brilliant thanks');
 
 function sentiment(text) {
   const t = tokens(text);
   const raw = String(text || '');
   let neg = 0, pos = 0, urg = 0;
   for (const w of t) {
-    if (NEG.includes(w)) neg++;
-    if (POS.includes(w)) pos++;
-    if (URGENT.includes(w)) urg++;
+    if (NEG.has(w)) neg++;
+    if (POS.has(w)) pos++;
+    if (URGENT.has(w)) urg++;
   }
   const letters = raw.replace(/[^a-z]/gi, '');
   const caps = raw.replace(/[^A-Z]/g, '').length;
@@ -168,6 +171,17 @@ function cleanStr(v, max) { return String(v == null ? '' : v).replace(/[\u0000-\
 function cleanMultiline(v, max) { return String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, max); }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_WORDS = {
+  sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tue: 2, tues: 2,
+  wednesday: 3, wed: 3, thursday: 4, thu: 4, thur: 4, thurs: 4,
+  friday: 5, fri: 5, saturday: 6, sat: 6,
+};
+
+/** Which weekday the customer is asking about, if they named one. */
+function dayAsked(text) {
+  for (const w of words(text)) if (DAY_WORDS[w] != null) return DAY_WORDS[w];
+  return null;
+}
 
 /** Validate/normalise the owner-supplied profile. Never throws on junk: drops it. */
 function normalizeProfile(raw) {
@@ -402,6 +416,7 @@ function think(profile, text, session, opts) {
 
   const hs = hoursState(p.hours, now);
   const openNow = hs ? hs.open : null;
+  const askedDay = dayAsked(body);
 
   /* 3. hard rules first: safety, escalation, hand-off ------------------- */
   const wantsHuman = /\b(human|real person|agent|someone|manager|staff)\b/.test(norm(body)) && top && (top.id === 'contact' || top.id === 'complaint');
@@ -433,7 +448,7 @@ function think(profile, text, session, opts) {
      An intent answer and a knowledge-base hit can both exist ("do you have a free trial" is
      both an availability question and an exact FAQ). Rather than let one silently win, score
      both and keep the more confident answer - that is the whole point of a reasoning step. */
-  const ctx = { entities: e, mood, openNow, hs, seed, body, slots: s.slots, profile: p };
+  const ctx = { entities: e, mood, openNow, hs, seed, body, slots: s.slots, profile: p, askedDay };
   let intentAnswer = null;
   if (top && top.score >= 4) {
     const intent = top.intent;
@@ -535,7 +550,20 @@ function answerFor(intent, p, ctx) {
       if (!p.hours) return null;
       const hs = ctx.hs;
       const days = p.hours.days.map((d) => DAY_NAMES[d].slice(0, 3)).join(', ');
-      if (hs.open) return { text: 'We are open now, until ' + p.hours.close + '. Our hours are ' + p.hours.open + '-' + p.hours.close + ' (' + days + ').', confidence: 0.95 };
+      const window2 = p.hours.open + '-' + p.hours.close;
+      // A named day ("are you open on Saturday?") must be answered for that day, not for today.
+      if (ctx.askedDay != null) {
+        const name = DAY_NAMES[ctx.askedDay];
+        const today = hs.day === ctx.askedDay;
+        if (!p.hours.days.includes(ctx.askedDay)) {
+          return { text: 'We are closed on ' + name + 's. Our hours are ' + window2 + ' (' + days + ').', confidence: 0.95 };
+        }
+        if (today && !hs.open) {
+          return { text: 'We are closed right now, but yes - we are open today (' + name + ') ' + window2 + '.', confidence: 0.95 };
+        }
+        return { text: 'Yes - we are open on ' + name + (today ? ' (today)' : '') + ', ' + window2 + '.', confidence: 0.95 };
+      }
+      if (hs.open) return { text: 'We are open now, until ' + p.hours.close + '. Our hours are ' + window2 + ' (' + days + ').', confidence: 0.95 };
       const next = hs.nextDay != null ? DAY_NAMES[hs.nextDay] : null;
       return { text: 'We are closed right now. Our hours are ' + p.hours.open + '-' + p.hours.close + ' (' + days + ')' + (next ? ' - we open again on ' + next + ' at ' + p.hours.open + '.' : '.'), confidence: 0.95 };
     }

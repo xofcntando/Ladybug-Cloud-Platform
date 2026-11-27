@@ -2596,7 +2596,8 @@ html[data-app="1"] .pwa-install { bottom: calc(92px + env(safe-area-inset-bottom
 }
 
 /* ---- Ladybug Brain: built-in auto-responder panel ---- */
-.wa-brain { display: flex; flex-direction: column; max-height: 88vh; width: min(560px, 94vw); }
+.wa-dialog-brain { width: min(620px, 100%); padding: 0; overflow: hidden; }
+.wa-brain { display: flex; flex-direction: column; max-height: 88vh; width: 100%; }
 .wa-brain-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--wa-line, #2a3942); }
 .wa-brain-title { display: flex; align-items: center; gap: 10px; }
 .wa-brain-title b { display: block; font-size: 15px; }
