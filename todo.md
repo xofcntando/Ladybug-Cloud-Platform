@@ -30,4 +30,4 @@
 ## 6. Docs + delivery
 - [x] AI_AND_FLOWS.md + README section
 - [x] Patch + ZIP built in /workspace/delivery
-- [ ] Confirm delivery method with the user (ZIP / GitHub push with token / live preview)
+- [x] Pushed to GitHub main as 1cdd9a6 (token used only for the push, never written to .git/config)
