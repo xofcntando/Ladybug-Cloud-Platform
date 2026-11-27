@@ -537,6 +537,54 @@ section('no setup required');
   r = t('are you hiring'); eq('careers need no profile', r.action, 'answer'); ok('careers escalate without a profile', r.escalate);
 }
 
+
+section('learning from the owner\'s own replies');
+{
+  // The owner answered a customer by hand. That pair is now part of the profile, and the
+  // brain must answer from it exactly as it would from a hand-written FAQ.
+  const learnedProfile = brain.normalizeProfile({
+    name: 'Acme',
+    about: 'Acme builds and hosts WhatsApp bots for small businesses across Zimbabwe.',
+    faqs: [{ q: 'how do I pay', a: 'EcoCash or bank transfer.' }],
+    learned: [{ q: 'do you install the bot on my own server', a: 'Yes - we install it on your Render account and hand over the keys.', hits: 3 }],
+  });
+  eq('a learned pair is kept', learnedProfile.learned.length, 1);
+  eq('with its hit count', learnedProfile.learned[0].hits, 3);
+  ok('a learned pair gets an id', !!learnedProfile.learned[0].id);
+
+  const r = brain.think(learnedProfile, 'can you install the bot on my own server', null, { now: MON_10, jid: 'l1' });
+  eq('the owner\'s own answer is used', r.intent, 'learned');
+  ok('word for word', /hand over the keys/.test(r.reply), r.reply);
+  ok('and it is answered, not escalated', r.action === 'answer' && !r.escalate, r.action);
+  ok('the trace reports how many pairs are known', r.trace.some((t) => t.step === 'retrieve' && t.learned === 1));
+
+  // A pair the owner wrote down as a real FAQ must beat the same pair learned in passing.
+  const both = brain.normalizeProfile({
+    name: 'Acme',
+    about: 'Acme builds and hosts WhatsApp bots for small businesses across Zimbabwe.',
+    faqs: [
+      { q: 'do you deliver to bulawayo', a: 'Yes, USD 3 same day.' },
+      { q: 'what are your opening hours', a: 'Mon to Fri, 8 to 5.' },
+      { q: 'how do I pay', a: 'EcoCash or bank transfer.' },
+    ],
+    learned: [{ q: 'do you deliver to bulawayo', a: 'Sometimes, ask the driver.' }],
+  });
+  const t = brain.think(both, 'do you deliver to bulawayo', null, { now: MON_10, jid: 'l2' });
+  eq('a written FAQ wins over a learned one', t.intent, 'faq');
+  ok('and its answer is the one sent', /USD 3/.test(t.reply), t.reply);
+
+  // Junk never becomes knowledge.
+  const junk = brain.normalizeProfile({ learned: [{ q: 'hi', a: '' }, { q: '', a: 'x' }, { q: 'ok', a: 'k' }] });
+  eq('empty or one-word pairs are dropped', junk.learned.length, 0);
+  ok('learned pairs alone do not make a profile usable', !brain.ready(junk));
+
+  // The cap holds even if a caller hands over a huge list.
+  const many = [];
+  for (let i = 0; i < 200; i++) many.push({ q: 'question number ' + i, a: 'answer number ' + i });
+  const capped = brain.normalizeProfile({ name: 'Acme', learned: many });
+  eq('the learned list is capped', capped.learned.length, brain.MAX_LEARNED);
+}
+
 /* ------------------------------------------------------------------ summary */
 console.log('\n' + (fail ? '\x1b[31m' : '\x1b[32m') + pass + ' passed, ' + fail + ' failed\x1b[0m\n');
 if (fail) process.exitCode = 1;

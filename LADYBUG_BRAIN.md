@@ -136,6 +136,49 @@ Every new step is visible in the console's **Try it** box: the trace now include
 and, when used, `synonyms`, alongside the existing `understand`, `intent`, `retrieve`,
 `policy` and `slot` steps.
 
+## Learning from the owner's own replies
+
+The best answers a business will ever give are the ones it types by hand. So the brain
+watches for them.
+
+When a customer writes to a chat, the bot keeps their last message for a while. If the owner
+then replies themselves - from their phone or from the console - the bot reports that pair
+(question and answer) to the platform, which stores it and hands it straight back to the
+running bot as extra knowledge. No switch, no key, no field: the owner simply answers a
+customer the way they always have, and the next customer who asks the same thing gets that
+answer.
+
+The mechanics are deliberately conservative:
+
+- **Only while the brain is on.** If the brain is off the owner is just chatting, and there is
+  nothing to teach. The capture is skipped entirely.
+- **The bot's own replies are never learned.** `isOwnEcho()` already separates the owner's
+  words from the bot's, and the same filter guards learning, so the brain cannot train itself
+  on its own output.
+- **One reply answers one question.** The pending question is consumed when a pair is
+  recorded, so a long conversation does not attach one question to five different replies.
+- **Pleasantries are skipped.** "ok", "thanks", "hi" and their friends teach nothing, on
+  either side of the pair.
+- **The question is what gets indexed.** The owner's reply is the answer, not a search term;
+  indexing it would let a stray word in an answer hijack a later match.
+- **A learned answer is slightly less certain than a written one.** It is capped at 0.88
+  confidence, so a hand-written FAQ on the same subject still wins a tie.
+- **Deduplicated and capped.** The same question asked again bumps a hit counter and replaces
+  the answer with the latest one (businesses change their line), rather than piling up rows.
+  The store holds at most 80 pairs; the engine reads at most 60.
+
+In the console, the **Learned from your chats** card lists every pair the owner has not dealt
+with yet, showing the customer's question and the answer that was given. *Make it a FAQ*
+promotes the pair into the normal questions list with the answer already filled in (so it can
+be edited and is no longer treated as provisional); *Dismiss* says no and the brain stops
+using it; *Clear* empties the list. Dismissed and promoted pairs are kept as history so the
+same question does not pop back up every week.
+
+Learned pairs live in `db.data.waBook[botId].brainLearned`, separate from the profile, and are
+merged into `profile.learned` whenever the brain is pushed to a bot. That separation matters:
+the console sends whatever it last loaded, and a stale tab must never be able to wipe answers
+the bot picked up in the meantime - the store always wins.
+
 ## The business profile
 
 The panel is organised the way an owner thinks about their business, not the way a database is structured.
@@ -185,6 +228,7 @@ The 🧠 tile in the WhatsApp console (and the `brain` deep link) opens the pane
 - a master switch, saved with the rest of the automation settings;
 - the full profile editor described above;
 - a **Try it** box that runs a message through the engine with a throwaway session and shows the reply bubble, the intent, the confidence percentage, the action and the mood, plus a collapsible reasoning trace;
+- the **Learned from your chats** list, with per-pair *Make it a FAQ* and *Dismiss*, and a *Clear* action;
 - the **What the bot could not answer** list, with per-gap *Turn into a FAQ* and a *Clear* action.
 
 Settings live in `db.data.waBook[botId].auto.brain`, so they inherit the existing persistence, MongoDB sync, the `autoSet` push to the bot and the `LADYBUG_AUTO` boot seed for free.
@@ -197,15 +241,15 @@ Settings live in `db.data.waBook[botId].auto.brain`, so they inherit the existin
 | --- | --- |
 | `lib/bot-shims/ladybug-brain.js` | the engine (pure, dependency-free) |
 | `lib/bot-shims/webBridge.js` | `maybeBrain()` runtime, `brain-gap` IPC, `autoGet` |
-| `lib/wa-book.js` | `cleanBrain`, `addGap`, `gapsView`, `clearGaps` |
-| `lib/bots.js` | persists `brain-gap` events |
+| `lib/wa-book.js` | `cleanBrain`, `addGap`, `gapsView`, `clearGaps`, `addLearned`, `learnedFor`, `brainFor` |
+| `lib/bots.js` | persists `brain-gap` and `brain-learn` events |
 | `lib/installer.js` | ships the engine next to the bridge |
-| `lib/webconsole.js` | `brain`, `brainTest`, `brainGapsClear`, `paused`, `pauseSet` handlers |
-| `app.js` | `GET /api/bots/:id/web/brain`, `POST …/brain/test`, `POST …/brain/gaps/clear` |
+| `lib/webconsole.js` | `brain`, `brainTest`, `brainGapsClear`, `brainLearnedApprove`, `brainLearnedStatus`, `brainLearnedClear`, `paused`, `pauseSet` handlers |
+| `app.js` | `GET /api/bots/:id/web/brain`, `POST …/brain/test`, `POST …/brain/gaps/clear`, `POST …/brain/learned/approve`, `POST …/brain/learned/status`, `POST …/brain/learned/clear` |
 | `public/js/wa-brain.js` | the console panel |
 | `public/js/wa-pause.js` | the "bot paused" pill and the takeover panel |
-| `test/ladybug-brain.test.js` | 228 assertions over the engine and the gap log |
-| `test/wa-takeover.test.js` | 60 assertions over pausing and media replies |
+| `test/ladybug-brain.test.js` | 240 assertions over the engine and the gap log |
+| `test/wa-takeover.test.js` | 92 assertions over pausing, media replies and learning from the owner |
 
 ---
 
@@ -215,7 +259,7 @@ Settings live in `db.data.waBook[botId].auto.brain`, so they inherit the existin
 node test/ladybug-brain.test.js
 ```
 
-The suite covers text normalisation and stemming, entity extraction (including names and quantities), sentiment including shouting and urgency, profile normalisation and caps, opening-hours state across open/closed/next-day/timezone, retrieval ranking and the tiny-corpus case, every intent, the weigh step, escalation for anger / human requests / complaints, slot filling across turns, gap emission and the second-miss escalation, ambiguity clarification, session TTL, `preview`, and the `wa-book` settings and gap log including the "brain on without a profile" rejection. The upgrade adds dedicated sections for language detection, name and quantity entities, all fourteen new intents, localized replies, customer memory, the escalation recap, synonym-boosted retrieval, and a "no setup required" block that proves every new intent answers safely from a profile containing nothing but a name.
+The suite covers text normalisation and stemming, entity extraction (including names and quantities), sentiment including shouting and urgency, profile normalisation and caps, opening-hours state across open/closed/next-day/timezone, retrieval ranking and the tiny-corpus case, every intent, the weigh step, escalation for anger / human requests / complaints, slot filling across turns, gap emission and the second-miss escalation, ambiguity clarification, session TTL, `preview`, and the `wa-book` settings and gap log including the "brain on without a profile" rejection. The upgrade adds dedicated sections for language detection, name and quantity entities, all fourteen new intents, localized replies, customer memory, the escalation recap, synonym-boosted retrieval, a "no setup required" block that proves every new intent answers safely from a profile containing nothing but a name, and a "learning from the owner's own replies" block covering learned retrieval, the FAQ-beats-learned tie, junk rejection and the cap. `test/wa-takeover.test.js` covers the learned store (dedupe, hit counts, dismiss/promote, the stale-save guard, clearing) and the bot-side pairing rules that decide what is worth learning.
 
 It runs with a throwaway `DATA_DIR` and touches no network and no real bot.
 

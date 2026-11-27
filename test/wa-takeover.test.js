@@ -147,6 +147,108 @@ section('groups can be paused too');
   book.resumeAll(BOT);
 }
 
+
+/* ------------------------------------------------------------------ learning from the owner */
+
+section('the owner answering a customer teaches the brain');
+{
+  const row = book.addLearned(BOT, { q: 'do you install the bot on my own server', a: 'Yes - we install it on your Render account and hand over the keys.', jid: A });
+  ok('the pair is stored', !!row && row.q.indexOf('install') !== -1);
+  eq('with a hit count of one', row.hits, 1);
+  eq('and a status of new', row.status, 'new');
+  eq('the chat it came from is kept', row.jid, A);
+
+  const again = book.addLearned(BOT, { q: 'Do you install the bot on my own server', a: 'Yes, and we hand over the keys.', jid: A });
+  eq('asking the same thing again does not duplicate it', book.learnedView(BOT).learned.length, 1);
+  eq('the hit count goes up instead', again.hits, 2);
+  ok('and the latest answer wins', /hand over the keys/.test(again.a), again.a);
+
+  const v = book.learnedView(BOT);
+  ok('the list reports its cap', v.max > 0);
+  eq('a pair the owner has not reviewed is handed to the brain', book.learnedFor(BOT).length, 1);
+}
+
+section('junk is not knowledge');
+{
+  const before = book.learnedView(BOT).learned.length;
+  eq('a one-word question is refused', book.addLearned(BOT, { q: 'hi', a: 'Hello, how can I help you today?' }), null);
+  eq('a one-word answer is refused', book.addLearned(BOT, { q: 'what time do you close today', a: 'ok' }), null);
+  eq('nothing was added', book.learnedView(BOT).learned.length, before);
+}
+
+section('dismissing and promoting');
+{
+  const row = book.learnedView(BOT).learned[0];
+  book.setLearnedStatus(BOT, row.id, 'dismissed');
+  eq('a dismissed pair is no longer used by the brain', book.learnedFor(BOT).length, 0);
+  ok('but it is still listed for the owner', book.learnedView(BOT).learned.some((r) => r.id === row.id));
+  book.setLearnedStatus(BOT, row.id, 'new');
+  eq('and it can come back', book.learnedFor(BOT).length, 1);
+
+  book.setLearnedStatus(BOT, row.id, 'used');
+  eq('a pair turned into a FAQ stops being learned knowledge', book.learnedFor(BOT).length, 0);
+
+  throws('an unknown status is rejected', () => book.setLearnedStatus(BOT, row.id, 'banana'));
+  throws('an unknown id is rejected', () => book.setLearnedStatus(BOT, 'nope', 'new'));
+}
+
+section('the brain gets the learned pairs, not the browser');
+{
+  book.addLearned(BOT, { q: 'do you offer a free trial', a: 'Yes - seven days, no card needed.' });
+  book.setAuto(BOT, { brain: { enabled: true, profile: PROFILE } });
+  const cfg = book.brainFor(BOT);
+  ok('brainFor returns a brain config', !!cfg && !!cfg.profile);
+  ok('with the learned pairs attached', Array.isArray(cfg.profile.learned));
+  // The console sends whatever it last loaded; the store must still win.
+  book.setAuto(BOT, { brain: { enabled: true, profile: Object.assign({}, PROFILE, { learned: [] }) } });
+  const saved = book.autoFor(BOT).brain;
+  ok('a stale save cannot wipe learned answers', Array.isArray(saved.profile.learned) && saved.profile.learned.length === 1, JSON.stringify(saved.profile.learned));
+  ok('the brain config is a copy, not the stored object', book.brainFor(BOT) !== book.autoFor(BOT).brain);
+}
+
+section('clearing the learned list');
+{
+  book.clearLearned(BOT);
+  eq('the list is empty', book.learnedView(BOT).learned.length, 0);
+  eq('and the brain sees nothing', book.learnedFor(BOT).length, 0);
+}
+
+section('the bot only learns from real owner replies');
+{
+  // The pairing rules live in the bot's web bridge. They are exported so they can be tested
+  // without a WhatsApp socket: LADYBUG_AUTO seeds the brain config at require time.
+  process.env.LADYBUG_AUTO = JSON.stringify({ brain: { enabled: true, profile: { name: 'Acme' } } });
+  const sent = [];
+  process.send = (m) => sent.push(m);
+  const wb = require('../lib/bot-shims/webBridge')._learning;
+
+  wb.noteInbound(A, 'do you install the bot on my own server');
+  wb.learnFromOwner(A, 'Yes - we install it and hand over the keys.');
+  eq('a real question and a real answer are reported', sent.filter((m) => m.event === 'brain-learn').length, 1);
+  const pair = sent.find((m) => m.event === 'brain-learn');
+  eq('with the customer question', pair.q, 'do you install the bot on my own server');
+  eq('and the owner answer', pair.a, 'Yes - we install it and hand over the keys.');
+  eq('one answer consumes one question', wb.lastInbound.has(A), false);
+
+  sent.length = 0;
+  wb.learnFromOwner(A, 'Sure, no problem at all.');
+  eq('an answer with no question before it is not learned', sent.length, 0);
+
+  wb.noteInbound(B, 'what are your opening hours on saturday');
+  wb.learnFromOwner(B, 'ok');
+  eq('a one-word reply is not learned', sent.length, 0);
+
+  wb.noteInbound(B, 'hi');
+  wb.learnFromOwner(B, 'Hello! How can I help you today?');
+  eq('a one-word question is not learned', sent.length, 0);
+
+  wb.noteInbound(B, 'where are you based exactly');
+  wb.learnFromOwner(B, 'We are at 12 Samora Machel Ave in Harare.');
+  eq('a good pair after the noise is still learned', sent.length, 1);
+
+  delete process.send;
+}
+
 /* ------------------------------------------------------------------ media replies */
 
 section('a voice note gets an answer, not silence');

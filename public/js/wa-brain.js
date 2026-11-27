@@ -16,6 +16,7 @@
   let C = null;
   let cfg = null;      // { enabled, profile, escalateAfter, cooldownSec, maxPerHour }
   let gaps = [];
+  let learned = [];   // question/answer pairs picked up from the owner's own replies
   let busy = false;
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -42,7 +43,7 @@
         name: '', about: '', tone: 'friendly', currency: 'USD',
         location: '', phone: '', email: '', website: '',
         payments: '', delivery: '', refunds: '', escalateTo: '',
-        hours: null, prices: [], faqs: [],
+        hours: null, prices: [], faqs: [], learned: [],
       },
     };
   }
@@ -66,6 +67,7 @@
     const r = await C.api(C.base + '/brain');
     cfg = normalise(r.brain);
     gaps = Array.isArray(r.gaps) ? r.gaps : [];
+    learned = Array.isArray(r.learned) ? r.learned : [];
     return r;
   }
 
@@ -143,6 +145,26 @@
       <div class="wa-brain-card-head"><b>What the bot could not answer</b><button type="button" class="wa-brain-mini" id="bClearGaps">Clear</button></div>
       ${rows}
       <p class="wa-brain-hint">These are real messages from customers. Answering them makes the bot smarter immediately.</p>
+    </div>`;
+  }
+
+  function learnedBlock() {
+    // Only pairs the owner has not dealt with yet are worth showing; the rest are history.
+    const fresh = learned.filter((l) => l.status !== 'dismissed' && l.status !== 'used');
+    if (!fresh.length) return '';
+    const rows = fresh.slice(0, 8).map((l) => `<div class="wa-brain-gap">
+      <div class="wa-brain-gap-q">${esc(l.q)}</div>
+      <div class="wa-brain-learned-a">${esc(l.a)}</div>
+      <div class="wa-brain-gap-meta">${l.hits > 1 ? 'asked ' + l.hits + ' times \u00b7 ' : ''}you answered this yourself</div>
+      <div class="wa-brain-learned-actions">
+        <button type="button" class="wa-brain-mini" data-learn-ok="${esc(l.id)}">Make it a FAQ</button>
+        <button type="button" class="wa-brain-mini" data-learn-no="${esc(l.id)}">Dismiss</button>
+      </div>
+    </div>`).join('');
+    return `<div class="wa-brain-card">
+      <div class="wa-brain-card-head"><b>Learned from your chats</b><button type="button" class="wa-brain-mini" id="bClearLearned">Clear</button></div>
+      ${rows}
+      <p class="wa-brain-hint">Every time you answer a customer yourself, the bot keeps the question and your reply and uses them next time - no setup. Promote one to a FAQ to make it permanent.</p>
     </div>`;
   }
 
@@ -228,6 +250,7 @@
           <div id="bTestOut" class="wa-brain-out"></div>
         </div>
 
+        ${learnedBlock()}
         ${gapsBlock()}
       </div>
 
@@ -364,6 +387,33 @@
     const clearGaps = q('#bClearGaps');
     if (clearGaps) clearGaps.onclick = async () => {
       try { await C.api(C.base + '/brain/gaps/clear', { method: 'POST' }); gaps = []; C.toast('Cleared'); } catch (e) { C.toast('Could not clear'); }
+      rerender(d);
+    };
+
+    d.querySelectorAll('[data-learn-ok]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const r = await C.api(C.base + '/brain/learned/approve', { method: 'POST', body: { id: b.dataset.learnOk } });
+          C.toast(r && r.duplicate ? 'Already a FAQ - the pair is now permanent' : 'Added to your questions - write or tweak the answer and save');
+          await load();
+        } catch (e) { C.toast(e.message || 'Could not add it'); }
+        rerender(d);
+      };
+    });
+    d.querySelectorAll('[data-learn-no]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await C.api(C.base + '/brain/learned/status', { method: 'POST', body: { id: b.dataset.learnNo, status: 'dismissed' } });
+          learned = learned.filter((l) => l.id !== b.dataset.learnNo);
+        } catch (e) { C.toast(e.message || 'Could not dismiss it'); }
+        rerender(d);
+      };
+    });
+    const clearLearned = q('#bClearLearned');
+    if (clearLearned) clearLearned.onclick = async () => {
+      try { await C.api(C.base + '/brain/learned/clear', { method: 'POST' }); learned = []; C.toast('Cleared'); } catch (e) { C.toast('Could not clear'); }
       rerender(d);
     };
 

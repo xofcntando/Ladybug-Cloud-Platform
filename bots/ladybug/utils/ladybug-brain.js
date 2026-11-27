@@ -24,6 +24,7 @@
 
 const MAX_FAQS = 60;
 const MAX_PRICES = 40;
+const MAX_LEARNED = 60;
 const MAX_REPLY = 900;
 const SESSION_TTL_MS = 30 * 60_000;
 const MAX_SESSIONS = 800;
@@ -264,6 +265,7 @@ function normalizeProfile(raw) {
     hours: null,
     prices: [],
     faqs: [],
+    learned: [],
   };
 
   const h = p.hours;
@@ -293,6 +295,20 @@ function normalizeProfile(raw) {
       out.faqs.push({ id: cleanStr(row.id, 24) || 'f' + out.faqs.length, q, a, keys: cleanStr(row.keys, 120) });
     }
   }
+
+  // Pairs the brain picked up by watching the owner answer customers themselves. They are
+  // kept apart from hand-written FAQs so the console can show where each answer came from,
+  // and so dismissing one never touches what the owner typed.
+  if (Array.isArray(p.learned)) {
+    for (const row of p.learned.slice(0, MAX_LEARNED)) {
+      if (!row || typeof row !== 'object') continue;
+      const q = cleanStr(row.q, 140);
+      const a = cleanMultiline(row.a, 600);
+      // Same bar the platform store uses: a one-word question or reply teaches nothing.
+      if (q.length < 4 || a.length < 3) continue;
+      out.learned.push({ id: cleanStr(row.id, 24) || 'l' + out.learned.length, q, a, hits: Math.max(1, Math.round(Number(row.hits) || 1)) });
+    }
+  }
   return out;
 }
 
@@ -308,6 +324,11 @@ function buildIndex(profile) {
   const docs = [];
   for (const f of profile.faqs || []) {
     docs.push({ kind: 'faq', id: f.id, text: f.q + ' ' + f.keys + ' ' + f.a, toks: tokens(f.q + ' ' + f.keys), ref: f });
+  }
+  // Learned pairs are indexed on the customer's words only: the owner's reply is the answer,
+  // not a search term, and indexing it would let a stray word in the answer hijack a match.
+  for (const l of profile.learned || []) {
+    docs.push({ kind: 'learned', id: l.id, text: l.q + ' ' + l.a, toks: tokens(l.q), ref: l });
   }
   const facts = [
     ['about', profile.about],
@@ -554,7 +575,7 @@ function think(profile, text, session, opts) {
       }
     }
   }
-  trace.push({ step: 'retrieve', best: hit.best ? hit.best.kind + (hit.best.ref ? ':' + hit.best.ref.id : '') : null, score: Number(hit.score.toFixed(3)), coverage: Number(hit.coverage.toFixed(2)) });
+  trace.push({ step: 'retrieve', best: hit.best ? hit.best.kind + (hit.best.ref ? ':' + hit.best.ref.id : '') : null, score: Number(hit.score.toFixed(3)), coverage: Number(hit.coverage.toFixed(2)), learned: (p.learned || []).length });
 
   const hs = hoursState(p.hours, now);
   const openNow = hs ? hs.open : null;
@@ -611,10 +632,13 @@ function think(profile, text, session, opts) {
   const minKbScore = synonymPass ? 0.05 : 0.15;
   if (hit.best && hit.coverage >= 0.5 && hit.score >= minKbScore) {
     const d = hit.best;
+    const conf = Math.min(0.95, 0.45 + 0.4 * hit.coverage + Math.min(0.15, hit.score / 3));
     kbAnswer = {
-      text: d.kind === 'faq' ? d.ref.a : String(d.text),
-      intent: d.kind === 'faq' ? 'faq' : 'fact:' + d.kind,
-      confidence: Math.min(0.95, 0.45 + 0.4 * hit.coverage + Math.min(0.15, hit.score / 3)),
+      text: (d.kind === 'faq' || d.kind === 'learned') ? d.ref.a : String(d.text),
+      intent: d.kind === 'learned' ? 'learned' : d.kind === 'faq' ? 'faq' : 'fact:' + d.kind,
+      // An answer the owner gave in a live chat is a little less certain than one they
+      // wrote down deliberately, so a real FAQ still wins a tie.
+      confidence: d.kind === 'learned' ? Math.min(0.88, conf) : conf,
       escalate: false,
     };
   }
@@ -886,7 +910,7 @@ function preview(profile, text, opts) {
 }
 
 module.exports = {
-  MAX_FAQS, MAX_PRICES, MAX_REPLY, SESSION_TTL_MS, MAX_SESSIONS,
+  MAX_FAQS, MAX_PRICES, MAX_LEARNED, MAX_REPLY, SESSION_TTL_MS, MAX_SESSIONS,
   normalizeProfile, ready, think, preview, fresh, newSession,
   norm, tokens, words, stem, entities, sentiment, retrieve, buildIndex, hoursState, INTENTS,
   MEDIA_KINDS, mediaReply,

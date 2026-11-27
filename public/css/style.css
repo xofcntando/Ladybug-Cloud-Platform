@@ -2649,6 +2649,9 @@ html[data-app="1"] .pwa-install { bottom: calc(92px + env(safe-area-inset-bottom
 .wa-brain-gap-meta { font-size: 10.5px; color: var(--wa-muted, #8696a0); }
 .wa-brain-mini { align-self: flex-start; background: transparent; border: 1px solid var(--wa-line, #2a3942); color: var(--wa-text, #e9edef); border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 11px; cursor: pointer; }
 .wa-brain-mini:hover { border-color: #00a884; color: #00a884; }
+.wa-brain-mini:disabled { opacity: .5; cursor: default; }
+.wa-brain-learned-a { font-size: 12px; color: var(--wa-text, #e9edef); opacity: .82; padding-left: 9px; border-left: 2px solid rgba(0, 168, 132, .35); white-space: pre-wrap; }
+.wa-brain-learned-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 @media (max-width: 520px) {
   .wa-brain { width: 100vw; max-height: 92vh; }
   .wa-brain-row2 { flex-direction: column; }

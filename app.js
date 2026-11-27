@@ -1559,6 +1559,10 @@ app.post('/api/bots/:id/web/ai', requireAuth, ownWeb('ai'));
 app.get('/api/bots/:id/web/brain', requireAuth, ownWeb('brain'));
 app.post('/api/bots/:id/web/brain/test', requireAuth, ownWeb('brainTest'));
 app.post('/api/bots/:id/web/brain/gaps/clear', requireAuth, ownWeb('brainGapsClear'));
+// Answers the brain learned by watching the owner reply to customers by hand
+app.post('/api/bots/:id/web/brain/learned/approve', requireAuth, ownWeb('brainLearnedApprove'));
+app.post('/api/bots/:id/web/brain/learned/status', requireAuth, ownWeb('brainLearnedStatus'));
+app.post('/api/bots/:id/web/brain/learned/clear', requireAuth, ownWeb('brainLearnedClear'));
 // Human takeover: pause the bot in one chat (or all of them), and resume it again
 app.get('/api/bots/:id/web/paused', requireAuth, ownWeb('paused'));
 app.post('/api/bots/:id/web/pause', requireAuth, (req, res) => { const b = ownBot(req, res, 'agent'); if (b) webconsole.pauseSet(b, req, res); });
