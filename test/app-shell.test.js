@@ -76,9 +76,9 @@ const dispatch = /const TOOL = \{([\s\S]*?)\n      \};/.exec(appjs);
 assert.ok(dispatch, 'deep-link TOOL map not found in app.js');
 const wired = [...dispatch[1].matchAll(/^\s*([a-z]+):\s*\(\)/gm)].map((m) => m[1]);
 
-ok('the sheet lists all 18 console tools', () => {
-  assert.strictEqual(toolIds.length, 18, 'found ' + toolIds.length);
-  assert.strictEqual(new Set(toolIds).size, 18, 'duplicate tool');
+ok('the sheet lists all 19 console tools', () => {
+  assert.strictEqual(toolIds.length, 19, 'found ' + toolIds.length);
+  assert.strictEqual(new Set(toolIds).size, 19, 'duplicate tool');
 });
 
 ok('every console tool has a deep-link handler', () => {
@@ -95,7 +95,7 @@ ok('each handler calls a module that exists', () => {
       WADIG: 'wa-digest', WACRM: 'wa-crm', WATR: 'wa-translate', WRADAR: 'wa-radar',
       WAPRO: 'wa-pro', WALBL: 'wa-labels', WAGAL: 'wa-gallery', WACON: 'wa-contacts',
       WAGRP: 'wa-groups', WASTAT: 'wa-status', WACHAN: 'wa-channels', WAAUTO: 'wa-auto',
-      WAX: 'wa-extras', WAACC: 'wa-accounts', WAAI: 'wa-ai', WAFLOW: 'wa-flows',
+      WAX: 'wa-extras', WAACC: 'wa-accounts', WAAI: 'wa-ai', WAFLOW: 'wa-flows', WABRAIN: 'wa-brain',
     }[m[1]];
     assert.ok(file, 'unknown module ' + m[1]);
     const src = read('public/js/' + file + '.js');

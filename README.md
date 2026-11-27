@@ -23,14 +23,15 @@ Built by **Ntandomods** · Deployable on **Render** in one click.
 
 ---
 
-## ✨ AI assistant & 🧭 Chatbot flows (WhatsApp console)
+## 🧠 Ladybug Brain, ✨ AI assistant & 🧭 Chatbot flows (WhatsApp console)
 
-Two newer tools in the WhatsApp Web console, both opt-in:
+Three newer tools in the WhatsApp Web console:
 
+- **Ladybug Brain** (🧠 in the rail): the built-in auto-responder that needs **no key at all**. It reads the message, works out the intent and mood, retrieves the answer from your own business profile (hours, prices, FAQs, delivery, refunds) and replies — or asks a clarifying question, or hands the chat to a human. Every reply shows its reasoning in the console’s *Try it* box, and anything it could not answer lands in a gap list you can turn into a FAQ with one tap. Runs entirely on your server; nothing is sent anywhere.
 - **AI assistant** (✨ in the rail): suggest replies, summarise a thread, rewrite in a different tone, and transcribe voice notes. Bring your own OpenAI-compatible key — it is stored server-side, only ever shown masked, and never used unless you configure it. https-only with SSRF guards, 20 calls/minute per bot.
 - **Chatbot flows** (🧭 in the rail): multi-step auto-replies — a message with numbered options, a different message per choice, up to 8 steps, loops back to the menu, per-chat cooldowns and an "any message" welcome trigger.
 
-Full details, limits and security notes: **[AI_AND_FLOWS.md](AI_AND_FLOWS.md)**
+Full details, limits and security notes: **[LADYBUG_BRAIN.md](LADYBUG_BRAIN.md)** and **[AI_AND_FLOWS.md](AI_AND_FLOWS.md)**
 
 ---
 

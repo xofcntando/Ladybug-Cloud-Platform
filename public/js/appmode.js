@@ -112,6 +112,7 @@
     { icon: '🔗', label: 'Linked numbers', tool: 'accounts', note: 'Manage WhatsApp sessions' },
     { icon: '✨', label: 'AI assistant', tool: 'ai', note: 'Replies, summaries, transcription' },
     { icon: '🧭', label: 'Chatbot flows', tool: 'flows', note: 'Multi-step auto-replies' },
+    { icon: '🧠', label: 'Ladybug Brain', tool: 'brain', note: 'Built-in auto-responder' },
   ];
 
   var bar = null;

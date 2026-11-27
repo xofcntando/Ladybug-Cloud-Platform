@@ -442,12 +442,14 @@ function statusAudience(only) {
    Settings come from the platform (env LADYBUG_AUTO at start, 'autoSet' RPC afterwards). A key is null until the user
    sets it, so a setting made through a bot command (e.g. .savestatus on) is never overridden by a default. ---- */
 const flowEngine = require('./flow-engine');
-const auto = { online: null, viewStatus: null, saveStatus: null, readReceipts: null, rejectCalls: null, away: null, rules: null, flows: null };
+const brain = require('./ladybug-brain');
+const auto = { online: null, viewStatus: null, saveStatus: null, readReceipts: null, rejectCalls: null, away: null, rules: null, flows: null, brain: null };
 function readAuto(o) {
   for (const k of ['online', 'viewStatus', 'saveStatus', 'readReceipts', 'rejectCalls']) if (o && typeof o[k] === 'boolean') auto[k] = o[k];
   if (o && o.away && typeof o.away === 'object') auto.away = o.away;
   if (o && Array.isArray(o.rules)) auto.rules = o.rules;
   if (o && Array.isArray(o.flows)) auto.flows = flowEngine.normalize(o.flows);
+  if (o && o.brain && typeof o.brain === 'object') auto.brain = o.brain;
 }
 try { readAuto(JSON.parse(process.env.LADYBUG_AUTO || '{}')); } catch (e) { /* bad env, ignore */ }
 
@@ -532,6 +534,67 @@ function maybeFlow(m, r, body, jid) {
   return true;
 }
 
+/* ---- Ladybug Brain: the built-in auto-responder.
+   Needs no API key and no rules: it reads the message, works out the intent, and answers from
+   the owner's business profile (lib/bot-shims/ladybug-brain.js). Runs after explicit keyword
+   rules - an owner's rule always beats the generalist - and before the away message, so a
+   customer gets a real answer instead of "we are away". Unanswered questions are reported to
+   the platform as knowledge gaps the owner can turn into FAQs. ---- */
+const brainSessions = new Map(); // jid -> session
+const brainHits = new Map();     // jid -> [ts, ...]
+
+function brainAllowed(jid) {
+  const cfg = auto.brain;
+  if (!cfg || cfg.enabled === false || !cfg.profile) return false;
+  if (!brain.ready(cfg.profile)) return false;
+  const now = Date.now();
+  const hits = (brainHits.get(jid) || []).filter((t) => now - t < 3600_000);
+  brainHits.set(jid, hits);
+  if (hits.length >= (Number(cfg.maxPerHour) || 15)) return false;
+  const last = hits[hits.length - 1] || 0;
+  if (now - last < (Number(cfg.cooldownSec) || 30) * 1000) return false;
+  return true;
+}
+
+function maybeBrain(m, r, body, jid) {
+  if (!body || !brainAllowed(jid)) return false;
+  if (brainSessions.size > brain.MAX_SESSIONS) {
+    for (const [k, v] of brainSessions) if (!brain.fresh(v)) brainSessions.delete(k);
+  }
+  const session = brainSessions.get(jid) || null;
+  let out;
+  try { out = brain.think(auto.brain.profile, body, session, { jid }); }
+  catch (e) { return false; }
+  if (!out || !out.reply) return false;
+
+  if (out.session) brainSessions.set(jid, out.session);
+  const hits = brainHits.get(jid) || [];
+  hits.push(Date.now());
+  brainHits.set(jid, hits);
+
+  // Tell the platform what it could not answer, so the owner can fill the gap.
+  if (out.gap) {
+    try { process.send({ type: 'wa', event: 'brain-gap', botId: null, jid, q: out.gap.question, intent: out.gap.intent, reason: out.gap.reason }); } catch (e) { /* parent gone */ }
+  }
+
+  const send = () => pushAuto(jid, out.reply);
+  // A short "typing" pause makes an instant answer feel human instead of robotic.
+  try {
+    if (sock && typeof sock.sendPresenceUpdate === 'function') {
+      Promise.resolve(sock.sendPresenceUpdate('composing', jid)).catch(() => {});
+    }
+  } catch (e) { /* presence is optional */ }
+  const delay = Math.min(2500, 600 + out.reply.length * 12);
+  const timer = setTimeout(() => {
+    send();
+    try {
+      if (sock && typeof sock.sendPresenceUpdate === 'function') Promise.resolve(sock.sendPresenceUpdate('paused', jid)).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }, delay);
+  if (timer.unref) timer.unref();
+  return true;
+}
+
 function maybeAutoReply(m, r) {
   if (!sock || !r || !m.key || m.key.fromMe) return;
   const jid = r.jid;
@@ -560,6 +623,9 @@ function maybeAutoReply(m, r) {
       return;
     }
   }
+
+  // Nothing explicit matched: let the built-in brain answer from the business profile.
+  if (!group && maybeBrain(m, r, body, jid)) return;
 
   if (auto.away && auto.away.enabled && !group && auto.away.text) {
     const cd = Math.max(0, Number(auto.away.cooldownMin) || 0) * 60_000;
@@ -1744,6 +1810,7 @@ const handlers = {
       away: auto.away || null,
       rules: Array.isArray(auto.rules) ? auto.rules : [],
       flows: Array.isArray(auto.flows) ? auto.flows : [],
+    brain: auto.brain || null,
       saveSupported: !!(m && typeof m.setEnabled === 'function'),
       connected: conn.state === 'open',
     };
