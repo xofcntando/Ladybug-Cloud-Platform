@@ -25,4 +25,4 @@
 
 ## 4. Document & ship
 - [x] `BOT_COMMANDS.md` + README section
-- [ ] Commit and push to `main`
+- [x] Commit and push to `main` (7b7fc30)
