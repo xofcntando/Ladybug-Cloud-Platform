@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node test/wa-features.test.js && node test/site-features.test.js && node test/app-shell.test.js && node test/chat-persistence.test.js && node test/team.test.js && node test/mail.test.js && node test/wa-ai-flows.test.js && node test/ladybug-brain.test.js && node test/wa-takeover.test.js && node test/bot-commands.test.js && node test/report-inbox.test.js && node test/weekly-songs.test.js && node test/plans-usage.test.js",
+    "test": "node test/wa-features.test.js && node test/site-features.test.js && node test/app-shell.test.js && node test/chat-persistence.test.js && node test/team.test.js && node test/mail.test.js && node test/wa-ai-flows.test.js && node test/ai-autorespond.test.js && node test/ladybug-brain.test.js && node test/wa-takeover.test.js && node test/bot-commands.test.js && node test/report-inbox.test.js && node test/weekly-songs.test.js && node test/plans-usage.test.js",
     "test:ui": "node test/ui-harness.js && node test/site-ui-harness.js && node test/app-ui-harness.js"
   },
   "engines": {

@@ -60,6 +60,23 @@ blank on a later save keeps the stored key; **Remove provider** deletes it entir
 account, shared by all of that account's bots, backed up with the rest of the
 database and wiped when the account is deleted.
 
+### Auto-respond (new)
+
+**AI panel → Auto-respond** switch, per bot. When it is on, the AI model answers new customer
+messages by itself instead of only suggesting replies.
+
+- Direct chats only, never groups, never your own outgoing messages.
+- Order: flows, then keyword rules, then **AI**, then the built-in brain, then the away message.
+  If the AI hands off, errors or times out, the brain / away message answers instead, so nobody is left in silence.
+- The model answers `[[HANDOFF]]` (and stays silent) when the customer is angry, asks for a person, wants a
+  refund or cancellation, or the answer is not in your instructions. It is told never to invent prices or policies.
+- Owner instructions (up to 1,500 characters: prices, hours, delivery, tone) are sent with every request.
+- If you reply in a chat yourself, or pause it, the AI stands down there.
+- Limits: cooldown per chat (default 8 s), 20 AI replies per chat per hour, 300 per bot per hour.
+- The provider key never reaches the bot process: the bot sends the last 14 messages to the platform over IPC
+  (`ai-request` / `ai-response`) and receives one reply.
+- Storage: `db.data.waBook[botId].auto.aiReply = { enabled, instructions, cooldownSec, maxPerHour }`.
+
 ---
 
 ## 2. Chatbot flow builder
