@@ -121,7 +121,7 @@
             <textarea id="aiAutoInstr" rows="5" maxlength="1500" placeholder="We sell perfumes in Harare. Delivery $3 within the city, free over $40. Open Mon-Sat 8am-5pm. Payment by EcoCash or cash on delivery.">${esc((ar && ar.instructions) || '')}</textarea>
           </label>
           <div class="wa-ai-act"><button class="wa-btn" id="aiAutoSave">Save auto-respond</button></div>
-          <p class="wa-note">Nothing to fill in: switch it on and Ladybug starts replying. Direct chats only, never groups. Your keyword rules and flows run first. If the AI is unsure, the customer is angry or asks for a person, it stays quiet and the built-in brain or your away message takes over. Reply to a chat yourself and the bot stands down there. Each reply uses your AI provider key.</p>
+          <p class="wa-note">Nothing to fill in: switch it on and Ladybug starts replying. Direct chats only, never groups. Your keyword rules and flows run first. It replies to everything, including voice notes and photos. If the AI provider fails, the built-in brain or your away message answers instead. Reply to a chat yourself and the bot stands down there. Each reply uses your AI provider key.</p>
         </section>` : ''}
         ${cfg && cfg.configured ? `<section class="wa-ai-sec">
           <h4>This chat ${hasChat ? '<span class="wap-count">' + esc(chatName()) + '</span>' : ''}</h4>

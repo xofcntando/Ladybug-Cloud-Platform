@@ -68,12 +68,11 @@ messages by itself instead of only suggesting replies.
 - Direct chats only, never groups, never your own outgoing messages.
 - The AI chats **as Ladybug** 🐞 (Ladybug Mini by Ntandomods): warm, short WhatsApp-style messages, honest that it is an AI if asked, replies in the customer's language (Shona and Ndebele included). It can make small talk and answer general questions, but business facts come only from your instructions.
 - Order: flows, then keyword rules, then **AI**, then the built-in brain, then the away message.
-  If the AI hands off, errors or times out, the brain / away message answers instead, so nobody is left in silence.
-- The model answers `[[HANDOFF]]` (and stays silent) when the customer is angry, asks for a person, wants a
-  refund or cancellation, or the answer is not in your instructions. It is told never to invent prices or policies.
+  If the AI errors or times out, the brain / away message answers instead, so nobody is left in silence.
+- It replies to **everything** in a direct chat: questions, small talk, complaints, emojis, and voice notes, photos, files or stickers (it says it can't hear or see them and asks for text). Angry customers get a calm apology and a promise the owner will follow up; it never promises refunds or outcomes. Replies that arrive while it is writing are answered next, so no message is skipped.
 - Nothing is required: switching it on is enough. Owner instructions (optional, up to 1,500 characters: prices, hours, delivery, tone) are sent with every request. Without them Ladybug chats naturally and says it will pass specifics on to the owner.
 - If you reply in a chat yourself, or pause it, the AI stands down there.
-- Limits: cooldown per chat (default 8 s), 20 AI replies per chat per hour, 300 per bot per hour.
+- Limits: no cooldown; a loop guard of 60 AI replies per chat per hour and 300 per bot per hour. Groups are still skipped (answering every group message would be spam).
 - The provider key never reaches the bot process: the bot sends the last 14 messages to the platform over IPC
   (`ai-request` / `ai-response`) and receives one reply.
 - Storage: `db.data.waBook[botId].auto.aiReply = { enabled, instructions, cooldownSec, maxPerHour }`.
