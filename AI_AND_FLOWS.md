@@ -70,6 +70,12 @@ messages by itself instead of only suggesting replies.
 - Order: flows, then keyword rules, then **AI**, then the built-in brain, then the away message.
   If the AI errors or times out, the brain / away message answers instead, so nobody is left in silence.
 - It replies to **everything** in a direct chat: questions, small talk, complaints, emojis, and voice notes, photos, files or stickers (it says it can't hear or see them and asks for text). Angry customers get a calm apology and a promise the owner will follow up; it never promises refunds or outcomes. Replies that arrive while it is writing are answered next, so no message is skipped.
+- **First-time question:** the first time someone writes, Ladybug answers them and then asks once, in their language, which best
+  describes them (default options: student, business owner, customer, other; edit the list in the panel). Their answer (and name,
+  if given) is remembered per chat, and every later reply is pitched at that kind of person. The panel shows how many of each
+  you have and the latest people. A chat that is already ongoing (you wrote in it, or it has more than two messages) is never quizzed.
+  If someone ignores the question twice, Ladybug stops asking. Switch it off with **Ask first-time contacts who they are**;
+  **Forget these answers** resets everyone. Stored in `waBook[botId].aiPeople`.
 - Nothing is required: switching it on is enough. Owner instructions (optional, up to 1,500 characters: prices, hours, delivery, tone) are sent with every request. Without them Ladybug chats naturally and says it will pass specifics on to the owner.
 - If you reply in a chat yourself, or pause it, the AI stands down there.
 - Limits: no cooldown; a loop guard of 60 AI replies per chat per hour and 300 per bot per hour. Groups are still skipped (answering every group message would be spam).

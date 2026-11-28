@@ -1658,6 +1658,8 @@ app.post('/api/ai/settings', requireAuth, async (req, res) => {
   catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 app.post('/api/bots/:id/web/ai', requireAuth, ownWeb('ai'));
+app.get('/api/bots/:id/web/ai/people', requireAuth, ownWeb('aiPeople'));
+app.post('/api/bots/:id/web/ai/people/clear', requireAuth, ownWeb('aiPeopleClear'));
 // Built-in brain: works with no key, answered from the owner's business profile.
 app.get('/api/bots/:id/web/brain', requireAuth, ownWeb('brain'));
 app.post('/api/bots/:id/web/brain/test', requireAuth, ownWeb('brainTest'));

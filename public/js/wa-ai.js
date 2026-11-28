@@ -16,7 +16,8 @@
 
   let C = null;
   let cfg = null; // { configured, baseUrl, model, keyMask }
-  let ar = null;  // this bot's AI auto-respond settings { enabled, instructions, cooldownSec, maxPerHour }
+  let ar = null;
+  let people = null; // { people, counts, known, asked } from the first-contact question  // this bot's AI auto-respond settings { enabled, instructions, cooldownSec, maxPerHour }
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const SPARK = '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 2l1.9 5.6L19.5 9.5 13.9 11.4 12 17l-1.9-5.6L4.5 9.5l5.6-1.9L12 2zm6.5 11l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9.9-2.6z"/></svg>';
@@ -101,6 +102,15 @@
     return C.api(C.base + '/ai', { method: 'POST', body });
   }
 
+  function peopleBlock() {
+    if (!people || (!people.known && !people.asked)) return '<p class="wa-note">Nobody has answered yet. New contacts are asked once, then Ladybug tailors every reply to who they are.</p>';
+    const chips = Object.entries(people.counts || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="wap-count">${esc(k)} ${n}</span>`).join(' ');
+    const rows = (people.people || []).filter((p) => p.status === 'known').slice(0, 8)
+      .map((p) => `<div class="wa-note">+${esc(p.number)}${p.name ? ' (' + esc(p.name) + ')' : ''}: <b>${esc(p.role)}</b></div>`).join('');
+    return `<div class="wa-ai-label">Who is writing: ${people.known} answered, ${people.asked} waiting</div><div>${chips}</div>${rows}
+      <div class="wa-ai-act"><button class="wa-btn ghost sm" id="aiPeopleClear">Forget these answers</button></div>`;
+  }
+
   function open() {
     const d = dlg('<h3>AI assistant</h3><div class="chat-empty">Loading...</div>');
     const box = d.querySelector('.wa-dialog');
@@ -120,6 +130,14 @@
           <label class="wa-field"><span>Optional: what should it know? (prices, hours, delivery, tone). Leave empty and just switch it on.</span>
             <textarea id="aiAutoInstr" rows="5" maxlength="1500" placeholder="We sell perfumes in Harare. Delivery $3 within the city, free over $40. Open Mon-Sat 8am-5pm. Payment by EcoCash or cash on delivery.">${esc((ar && ar.instructions) || '')}</textarea>
           </label>
+          <div class="wa-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px">
+            <span>Ask first-time contacts who they are (once)</span>
+            <label class="wa-switch"><input type="checkbox" id="aiAskWho" ${!ar || ar.askWho !== false ? 'checked' : ''}><i></i></label>
+          </div>
+          <label class="wa-field"><span>Options it offers (comma separated)</span>
+            <input id="aiRoles" maxlength="200" value="${esc(((ar && ar.roles) || ['student', 'business owner', 'customer', 'other']).join(', '))}">
+          </label>
+          ${peopleBlock()}
           <div class="wa-ai-act"><button class="wa-btn" id="aiAutoSave">Save auto-respond</button></div>
           <p class="wa-note">Nothing to fill in: switch it on and Ladybug starts replying. Direct chats only, never groups. Your keyword rules and flows run first. It replies to everything, including voice notes and photos. If the AI provider fails, the built-in brain or your away message answers instead. Reply to a chat yourself and the bot stands down there. Each reply uses your AI provider key.</p>
         </section>` : ''}
@@ -147,7 +165,9 @@
       const autoSave = async (extra) => {
         const on = box.querySelector('#aiAutoOn');
         const ins = box.querySelector('#aiAutoInstr');
-        const body = { aiReply: Object.assign({}, ar || {}, { enabled: !!(on && on.checked), instructions: ins ? ins.value : '' }, extra || {}) };
+        const ask = box.querySelector('#aiAskWho');
+        const roles = box.querySelector('#aiRoles');
+        const body = { aiReply: Object.assign({}, ar || {}, { enabled: !!(on && on.checked), instructions: ins ? ins.value : '', askWho: ask ? ask.checked : true, roles: roles ? roles.value : '' }, extra || {}) };
         const r = await C.api(C.base + '/automation', { method: 'POST', body });
         ar = (r.saved && r.saved.aiReply) || null;
         return r;
@@ -159,6 +179,11 @@
           C.toast(ar && ar.enabled ? (r.applied ? 'AI auto-respond is ON' : 'AI auto-respond saved. It starts when the bot starts.') : 'AI auto-respond is off');
           draw();
         } catch (e) { aOn.checked = !aOn.checked; C.toast(e.message, 'err'); }
+      };
+      const pc = box.querySelector('#aiPeopleClear');
+      if (pc) pc.onclick = async () => {
+        if (!confirm('Forget who these people said they were? They will be asked again next time they write.')) return;
+        try { await C.api(C.base + '/ai/people/clear', { method: 'POST', body: {} }); people = null; C.toast('Cleared'); draw(); } catch (e) { C.toast(e.message, 'err'); }
       };
       const aSave = box.querySelector('#aiAutoSave');
       if (aSave) aSave.onclick = async () => {
@@ -219,7 +244,8 @@
     Promise.all([
       C.api('/api/ai/settings'),
       C.api(C.base + '/automation').catch(() => null),
-    ]).then(([r, a]) => { cfg = r; ar = (a && (a.aiReply || (a.saved && a.saved.aiReply))) || null; draw(); })
+      C.api(C.base + '/ai/people').catch(() => null),
+    ]).then(([r, a, pe]) => { people = pe; cfg = r; ar = (a && (a.aiReply || (a.saved && a.saved.aiReply))) || null; draw(); })
       .catch((e) => { box.innerHTML = `<div class="wa-gal-head"><h3>AI assistant</h3><button class="wa-icon-btn" data-x>&#10005;</button></div><div class="chat-empty">${esc(e.message)}</div>`; box.querySelectorAll('[data-x]').forEach((b) => { b.onclick = () => d.remove(); }); });
   }
 
