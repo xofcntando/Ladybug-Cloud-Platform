@@ -66,6 +66,7 @@ database and wiped when the account is deleted.
 messages by itself instead of only suggesting replies.
 
 - Direct chats only, never groups, never your own outgoing messages.
+- The AI chats **as Ladybug** 🐞 (Ladybug Mini by Ntandomods): warm, short WhatsApp-style messages, honest that it is an AI if asked, replies in the customer's language (Shona and Ndebele included). It can make small talk and answer general questions, but business facts come only from your instructions.
 - Order: flows, then keyword rules, then **AI**, then the built-in brain, then the away message.
   If the AI hands off, errors or times out, the brain / away message answers instead, so nobody is left in silence.
 - The model answers `[[HANDOFF]]` (and stays silent) when the customer is angry, asks for a person, wants a
