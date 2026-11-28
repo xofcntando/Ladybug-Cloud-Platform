@@ -117,11 +117,11 @@
             <span>Let the AI answer new customer messages by itself</span>
             <label class="wa-switch"><input type="checkbox" id="aiAutoOn" ${ar && ar.enabled ? 'checked' : ''}><i></i></label>
           </div>
-          <label class="wa-field"><span>What should it know? (prices, hours, delivery, tone, what not to promise)</span>
+          <label class="wa-field"><span>Optional: what should it know? (prices, hours, delivery, tone). Leave empty and just switch it on.</span>
             <textarea id="aiAutoInstr" rows="5" maxlength="1500" placeholder="We sell perfumes in Harare. Delivery $3 within the city, free over $40. Open Mon-Sat 8am-5pm. Payment by EcoCash or cash on delivery.">${esc((ar && ar.instructions) || '')}</textarea>
           </label>
           <div class="wa-ai-act"><button class="wa-btn" id="aiAutoSave">Save auto-respond</button></div>
-          <p class="wa-note">Replies to direct chats only, never groups. Your keyword rules and flows run first. If the AI is unsure, the customer is angry or asks for a person, it stays quiet and the built-in brain or your away message takes over. Reply to a chat yourself and the bot stands down there. Each reply uses your AI provider key.</p>
+          <p class="wa-note">Nothing to fill in: switch it on and Ladybug starts replying. Direct chats only, never groups. Your keyword rules and flows run first. If the AI is unsure, the customer is angry or asks for a person, it stays quiet and the built-in brain or your away message takes over. Reply to a chat yourself and the bot stands down there. Each reply uses your AI provider key.</p>
         </section>` : ''}
         ${cfg && cfg.configured ? `<section class="wa-ai-sec">
           <h4>This chat ${hasChat ? '<span class="wap-count">' + esc(chatName()) + '</span>' : ''}</h4>

@@ -71,7 +71,7 @@ messages by itself instead of only suggesting replies.
   If the AI hands off, errors or times out, the brain / away message answers instead, so nobody is left in silence.
 - The model answers `[[HANDOFF]]` (and stays silent) when the customer is angry, asks for a person, wants a
   refund or cancellation, or the answer is not in your instructions. It is told never to invent prices or policies.
-- Owner instructions (up to 1,500 characters: prices, hours, delivery, tone) are sent with every request.
+- Nothing is required: switching it on is enough. Owner instructions (optional, up to 1,500 characters: prices, hours, delivery, tone) are sent with every request. Without them Ladybug chats naturally and says it will pass specifics on to the owner.
 - If you reply in a chat yourself, or pause it, the AI stands down there.
 - Limits: cooldown per chat (default 8 s), 20 AI replies per chat per hour, 300 per bot per hour.
 - The provider key never reaches the bot process: the bot sends the last 14 messages to the platform over IPC

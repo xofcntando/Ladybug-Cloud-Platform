@@ -55,6 +55,8 @@ const book = require('../lib/wa-book');
   ok('returns reply text', !out.handoff && out.text === reply);
   ok('owner instructions reach the model', lastBody.messages[0].content.includes('Delivery is $3 in the city'));
   ok('speaks as Ladybug', lastBody.messages[0].content.includes('You are Ladybug') && lastBody.messages[0].content.includes('Ntandomods'));
+  const noInstr = await ai.autoReply('u1', hist, '');
+  ok('works with no instructions', !noInstr.handoff && /chat naturally/.test(lastBody.messages[0].content));
   ok('conversation reaches the model', lastBody.messages[1].content.includes('Them: How much is delivery?'));
 
   reply = ai.HANDOFF_TOKEN;
