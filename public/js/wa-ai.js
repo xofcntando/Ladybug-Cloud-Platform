@@ -103,11 +103,15 @@
   }
 
   function peopleBlock() {
-    if (!people || (!people.known && !people.asked)) return '<p class="wa-note">Nobody has answered yet. New contacts are asked once, then Ladybug tailors every reply to who they are.</p>';
-    const chips = Object.entries(people.counts || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="wap-count">${esc(k)} ${n}</span>`).join(' ');
-    const rows = (people.people || []).filter((p) => p.status === 'known').slice(0, 8)
-      .map((p) => `<div class="wa-note">+${esc(p.number)}${p.name ? ' (' + esc(p.name) + ')' : ''}: <b>${esc(p.role)}</b></div>`).join('');
-    return `<div class="wa-ai-label">Who is writing: ${people.known} answered, ${people.asked} waiting</div><div>${chips}</div>${rows}
+    if (!people || (!people.known && !people.asked)) return '<p class="wa-note">Nobody has answered yet. New contacts are greeted, then asked about themselves one playful question at a time. Everything is optional for them.</p>';
+    const chips = (o) => Object.entries(o || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `<span class="wap-count">${esc(k)} ${n}</span>`).join(' ');
+    const rows = (people.people || []).filter((p) => p.name || p.role || p.age || p.city || p.country).slice(0, 8)
+      .map((p) => {
+        const bits = [p.role, p.age ? p.age + ' yrs' : '', [p.city, p.country].filter(Boolean).join(', ')].filter(Boolean).map(esc).join(' &middot; ');
+        return `<div class="wa-note"><b>${esc(p.name || '+' + p.number)}</b>${p.name ? ' (+' + esc(p.number) + ')' : ''}: ${bits}${p.status === 'asked' ? ' <i>(still chatting)</i>' : ''}</div>`;
+      }).join('');
+    return `<div class="wa-ai-label">Who is writing: ${people.known} finished, ${people.asked} in progress${people.avgAge ? ', average age ' + people.avgAge : ''}</div>
+      <div>${chips(people.counts)}</div><div>${chips(people.places)}</div>${rows}
       <div class="wa-ai-act"><button class="wa-btn ghost sm" id="aiPeopleClear">Forget these answers</button></div>`;
   }
 
@@ -131,10 +135,13 @@
             <textarea id="aiAutoInstr" rows="5" maxlength="1500" placeholder="We sell perfumes in Harare. Delivery $3 within the city, free over $40. Open Mon-Sat 8am-5pm. Payment by EcoCash or cash on delivery.">${esc((ar && ar.instructions) || '')}</textarea>
           </label>
           <div class="wa-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px">
-            <span>Ask first-time contacts who they are (once)</span>
+            <span>Get to know first-time contacts (fun, one question at a time)</span>
             <label class="wa-switch"><input type="checkbox" id="aiAskWho" ${!ar || ar.askWho !== false ? 'checked' : ''}><i></i></label>
           </div>
-          <label class="wa-field"><span>Options it offers (comma separated)</span>
+          <div class="wa-ai-act" id="aiFields" style="flex-wrap:wrap;gap:10px 16px">
+            ${[['name', 'Name'], ['role', 'Student / business / ...'], ['age', 'Age'], ['location', 'City or country']].map(([k, l]) => `<label class="wa-check"><input type="checkbox" data-f="${k}" ${!ar || !Array.isArray(ar.fields) || ar.fields.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}
+          </div>
+          <label class="wa-field"><span>Options it offers for "who are you" (comma separated)</span>
             <input id="aiRoles" maxlength="200" value="${esc(((ar && ar.roles) || ['student', 'business owner', 'customer', 'other']).join(', '))}">
           </label>
           ${peopleBlock()}
@@ -167,7 +174,7 @@
         const ins = box.querySelector('#aiAutoInstr');
         const ask = box.querySelector('#aiAskWho');
         const roles = box.querySelector('#aiRoles');
-        const body = { aiReply: Object.assign({}, ar || {}, { enabled: !!(on && on.checked), instructions: ins ? ins.value : '', askWho: ask ? ask.checked : true, roles: roles ? roles.value : '' }, extra || {}) };
+        const body = { aiReply: Object.assign({}, ar || {}, { enabled: !!(on && on.checked), instructions: ins ? ins.value : '', askWho: ask ? ask.checked : true, fields: Array.from(box.querySelectorAll('#aiFields [data-f]')).filter((x) => x.checked).map((x) => x.dataset.f), roles: roles ? roles.value : '' }, extra || {}) };
         const r = await C.api(C.base + '/automation', { method: 'POST', body });
         ar = (r.saved && r.saved.aiReply) || null;
         return r;
