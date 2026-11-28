@@ -70,6 +70,14 @@ messages by itself instead of only suggesting replies.
 - Order: flows, then keyword rules, then **AI**, then the built-in brain, then the away message.
   If the AI errors or times out, the brain / away message answers instead, so nobody is left in silence.
 - It replies to **everything** in a direct chat: questions, small talk, complaints, emojis, and voice notes, photos, files or stickers (it says it can't hear or see them and asks for text). Angry customers get a calm apology and a promise the owner will follow up; it never promises refunds or outcomes. Replies that arrive while it is writing are answered next, so no message is skipped.
+- **Personalities:** pick who Ladybug is in the AI panel (Personality), optionally rename her. Nine are built in: **Ladybug** (default),
+  **Girlfriend**, **Boyfriend**, **Bestie**, **Sales assistant**, **Support agent**, **Study tutor**, **Life coach**, **Comedian** and
+  **Professional** (formal, no emoji). Definitions live in `lib/wa-personas.js`. The persona changes the voice only; the core rules
+  (no invented business facts, honest about being an AI, calm with upset people, always replies) apply to all of them.
+  Girlfriend and Boyfriend are adults-only, PG companions with guard rails enforced in code: they stay a friendly chat until the
+  person has said they are 18 or older (the bot asks their age, and an unknown, declined or under-18 age keeps it friendly), they never
+  go sexual, never claim to be human, never guilt-trip or cut people off from real relationships, and drop the flirting if someone seems
+  to be struggling. They do not ask the student/business question. If you switch off the get-to-know questions, romance cannot turn on.
 - **Getting to know new people (fun):** the first time someone writes, Ladybug greets them, introduces herself and answers what they said,
   then asks ONE playful question per message: their name, then what describes them (student, business owner, customer, other;
   editable), then their age ("guess my age"-style, fine to skip), then city or country. It is always optional: if someone dodges or

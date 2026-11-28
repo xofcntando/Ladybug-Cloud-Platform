@@ -17,6 +17,7 @@
   let C = null;
   let cfg = null; // { configured, baseUrl, model, keyMask }
   let ar = null;
+  let personaList = []; // [{ id, emoji, label, tagline, sample, romantic }]
   let people = null; // { people, counts, known, asked } from the first-contact question  // this bot's AI auto-respond settings { enabled, instructions, cooldownSec, maxPerHour }
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -131,6 +132,15 @@
             <span>Let the AI answer new customer messages by itself</span>
             <label class="wa-switch"><input type="checkbox" id="aiAutoOn" ${ar && ar.enabled ? 'checked' : ''}><i></i></label>
           </div>
+          <h4 style="margin-top:12px">Personality</h4>
+          <div id="aiPersonas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+            ${personaList.map((p) => `<button type="button" class="wa-btn ${((ar && ar.persona) || 'ladybug') === p.id ? '' : 'ghost'}" data-p="${esc(p.id)}" style="text-align:left;white-space:normal;line-height:1.25">
+              <span style="font-size:20px">${esc(p.emoji)}</span> <b>${esc(p.label)}</b><br><small>${esc(p.tagline)}</small></button>`).join('')}
+          </div>
+          ${(() => { const cur = personaList.find((p) => p.id === ((ar && ar.persona) || 'ladybug')); return cur ? `<p class="wa-note">Sounds like: &ldquo;${esc(cur.sample)}&rdquo;${cur.romantic ? '<br><b>Adults only, PG.</b> It stays a friendly chat until the person tells Ladybug they are 18 or older (it asks their age), never gets explicit, and always says it is an AI if asked.' : ''}</p>` : ''; })()}
+          <label class="wa-field"><span>Its name (optional, default Ladybug)</span>
+            <input id="aiPersonaName" maxlength="30" placeholder="Ladybug" value="${esc((ar && ar.personaName) || '')}">
+          </label>
           <label class="wa-field"><span>Optional: what should it know? (prices, hours, delivery, tone). Leave empty and just switch it on.</span>
             <textarea id="aiAutoInstr" rows="5" maxlength="1500" placeholder="We sell perfumes in Harare. Delivery $3 within the city, free over $40. Open Mon-Sat 8am-5pm. Payment by EcoCash or cash on delivery.">${esc((ar && ar.instructions) || '')}</textarea>
           </label>
@@ -174,7 +184,7 @@
         const ins = box.querySelector('#aiAutoInstr');
         const ask = box.querySelector('#aiAskWho');
         const roles = box.querySelector('#aiRoles');
-        const body = { aiReply: Object.assign({}, ar || {}, { enabled: !!(on && on.checked), instructions: ins ? ins.value : '', askWho: ask ? ask.checked : true, fields: Array.from(box.querySelectorAll('#aiFields [data-f]')).filter((x) => x.checked).map((x) => x.dataset.f), roles: roles ? roles.value : '' }, extra || {}) };
+        const body = { aiReply: Object.assign({}, ar || {}, { enabled: !!(on && on.checked), instructions: ins ? ins.value : '', askWho: ask ? ask.checked : true, persona: (ar && ar.persona) || 'ladybug', personaName: (box.querySelector('#aiPersonaName') || {}).value || '', fields: Array.from(box.querySelectorAll('#aiFields [data-f]')).filter((x) => x.checked).map((x) => x.dataset.f), roles: roles ? roles.value : '' }, extra || {}) };
         const r = await C.api(C.base + '/automation', { method: 'POST', body });
         ar = (r.saved && r.saved.aiReply) || null;
         return r;
@@ -187,6 +197,15 @@
           draw();
         } catch (e) { aOn.checked = !aOn.checked; C.toast(e.message, 'err'); }
       };
+      box.querySelectorAll('#aiPersonas [data-p]').forEach((b) => {
+        b.onclick = async () => {
+          try {
+            await autoSave({ persona: b.dataset.p });
+            C.toast('Personality: ' + b.textContent.trim().split('\n')[0].replace(/\s+/g, ' '));
+            draw();
+          } catch (e) { C.toast(e.message, 'err'); }
+        };
+      });
       const pc = box.querySelector('#aiPeopleClear');
       if (pc) pc.onclick = async () => {
         if (!confirm('Forget who these people said they were? They will be asked again next time they write.')) return;
@@ -252,7 +271,8 @@
       C.api('/api/ai/settings'),
       C.api(C.base + '/automation').catch(() => null),
       C.api(C.base + '/ai/people').catch(() => null),
-    ]).then(([r, a, pe]) => { people = pe; cfg = r; ar = (a && (a.aiReply || (a.saved && a.saved.aiReply))) || null; draw(); })
+      C.api('/api/ai/personas').catch(() => ({ personas: [] })),
+    ]).then(([r, a, pe, pl]) => { people = pe; personaList = (pl && pl.personas) || []; cfg = r; ar = (a && (a.aiReply || (a.saved && a.saved.aiReply))) || null; draw(); })
       .catch((e) => { box.innerHTML = `<div class="wa-gal-head"><h3>AI assistant</h3><button class="wa-icon-btn" data-x>&#10005;</button></div><div class="chat-empty">${esc(e.message)}</div>`; box.querySelectorAll('[data-x]').forEach((b) => { b.onclick = () => d.remove(); }); });
   }
 

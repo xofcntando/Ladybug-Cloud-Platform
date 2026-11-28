@@ -1653,6 +1653,7 @@ app.post('/api/bots/:id/web/automation', requireAuth, ownWeb('automationSet'));
 // AI assistant: the provider key belongs to the account, so it is set once here, not per bot.
 const waAi = require('./lib/wa-ai');
 app.get('/api/ai/settings', requireAuth, (req, res) => res.json(waAi.settings(req.user.id)));
+app.get('/api/ai/personas', requireAuth, (req, res) => res.json({ personas: require('./lib/wa-personas').listPublic(), default: require('./lib/wa-personas').DEFAULT_ID }));
 app.post('/api/ai/settings', requireAuth, async (req, res) => {
   try { res.json(await waAi.save(req.user.id, req.body)); }
   catch (e) { res.status(e.status || 400).json({ error: e.message }); }

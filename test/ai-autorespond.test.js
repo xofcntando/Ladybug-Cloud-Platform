@@ -106,7 +106,7 @@ const book = require('../lib/wa-book');
   reply = 'Hi! Ladybug here. What should I call you?';
   await ai.autoReply('u1', hist, '', { first: true, missing: ['name', 'role', 'age', 'location'], roles: ['student', 'teacher'] });
   const sys = lastBody.messages[0].content;
-  ok('first contact: introduce + playful + one question', /introduce yourself as Ladybug/.test(sys) && /at most ONE/.test(sys) && /ladybug pun/.test(sys));
+  ok('first contact: introduce + playful + one question', /introduce yourself as Ladybug/.test(sys) && /at most ONE/.test(sys) && /playful pun/.test(sys));
   ok('first contact lists what to learn in order', sys.indexOf('their name') < sys.indexOf('which best describes') && sys.indexOf('which best describes') < sys.indexOf('how old') && sys.indexOf('how old') < sys.indexOf('city or country'));
   ok('first contact is plain text, not JSON', !/Reply with ONLY a JSON/.test(lastBody.messages[1].content));
   ok('age is optional and playful', /guess my age/.test(sys) && /fine to skip/.test(sys));
@@ -185,6 +185,57 @@ const book = require('../lib/wa-book');
   reply = 'Hello';
   await ask([{ fromMe: false, text: 'hi' }], J5);
   ok('switched off: never asks, stores nothing', book.aiPersonGet('bot3', J5) === null && !/at most ONE/.test(lastBody.messages[0].content));
+
+  console.log('\npersonas');
+  const per = require('../lib/wa-personas');
+  ok('at least five personas', per.PERSONAS.length >= 5 && per.PERSONAS.some((p) => p.id === 'girlfriend'));
+  ok('ids are unique', new Set(per.PERSONAS.map((p) => p.id)).size === per.PERSONAS.length);
+  ok('public list hides prompts', per.listPublic().every((p) => p.id && p.label && p.sample && p.voice === undefined && p.role === undefined));
+  ok('unknown persona falls back to default', per.get('nope').id === 'ladybug');
+  ok('settings: valid persona kept, junk reset', book.cleanAiReply({ persona: 'tutor' }).persona === 'tutor' && book.cleanAiReply({ persona: 'x' }).persona === 'ladybug');
+  ok('settings: persona name cleaned', !/[<>]/.test(book.cleanAiReply({ personaName: ' Lady<b>  Bug ' }).personaName) && book.cleanAiReply({ personaName: 'x'.repeat(99) }).personaName.length === 30)
+  for (const p of per.PERSONAS) {
+    const sys = ai.buildSystem(p.id, { name: 'Ladybug' });
+    ok(`${p.id}: has identity, voice and the core rules`, sys.includes(p.role) && sys.includes('never invent them') && sys.includes('sincerely asks whether you are real or an AI'));
+  }
+  ok('professional uses no emoji', /Do not use emoji/.test(ai.buildSystem('professional')));
+  ok('custom name is used', /^You are Sparkle /.test(ai.buildSystem('bestie', { name: 'Sparkle' })));
+  ok('girlfriend without confirmed adult: friendly only', /NOT confirmed they are an adult/.test(ai.buildSystem('girlfriend', { romance: false })) && !/ROMANTIC COMPANION MODE/.test(ai.buildSystem('girlfriend', { romance: false })));
+  const rom = ai.buildSystem('girlfriend', { romance: true });
+  ok('girlfriend adult mode: PG, honest, no pressure', /PG/.test(rom) && /AI companion/.test(rom) && /Never sexual or explicit/.test(rom) && /self-harm/.test(rom));
+  ok('non-romantic personas never get romance text', !/ROMANTIC COMPANION MODE|NOT confirmed they are an adult/.test(ai.buildSystem('sales', { romance: true })));
+
+  console.log('\npersona in the bot flow');
+  book.setAuto('bot4', { aiReply: { enabled: true, persona: 'girlfriend', personaName: 'Ladi' } });
+  const askP = (history, jid) => new Promise((resolve) => {
+    const proc = { connected: true, send: (m) => resolve(m) };
+    bots._answerAiRequest({ botId: 'bot4' }, { userId: 'u1' }, proc, { id: 'p1', jid, history });
+  });
+  const G = '263771111111@s.whatsapp.net';
+  reply = 'Hey! Ladi here. What should I call you?';
+  await askP([{ fromMe: false, text: 'hi' }], G);
+  let sysG = lastBody.messages[0].content;
+  ok('persona and custom name reach the model', /^You are Ladi /.test(sysG) && /girlfriend-style/.test(sysG));
+  ok('romance is OFF on first contact (age unknown)', /NOT confirmed they are an adult/.test(sysG));
+  ok('romantic persona does not ask student/business', !/which best describes them/.test(sysG));
+  reply = '{"reply":"Tino, cute name! How old are you? You can skip.","name":"Tino","role":null,"age":null,"city":null,"country":null,"declined":false,"asked":"age"}';
+  await askP([{ fromMe: false, text: 'Tino' }], G);
+  reply = '{"reply":"Nice, thanks!","name":null,"role":null,"age":16,"city":null,"country":null,"declined":false,"asked":null}';
+  await askP([{ fromMe: false, text: '16' }], G);
+  reply = 'Hello';
+  await askP([{ fromMe: false, text: 'hey babe' }], G);
+  ok('under 18: stays friendly, never romantic', /NOT confirmed they are an adult/.test(lastBody.messages[0].content) && /under 18/.test(lastBody.messages[0].content));
+  const G2 = '263772222222@s.whatsapp.net';
+  book.aiPersonSet('bot4', G2, { status: 'known', name: 'Anna', age: 24 });
+  await askP([{ fromMe: false, text: 'hi' }], G2);
+  ok('confirmed adult: romantic mode on', /ROMANTIC COMPANION MODE/.test(lastBody.messages[0].content));
+  const G3 = '263773333333@s.whatsapp.net';
+  await askP([{ fromMe: true, text: 'owner here' }, { fromMe: false, text: 'hi' }], G3);
+  ok('ongoing chat (age unknown): romance stays off', /NOT confirmed they are an adult/.test(lastBody.messages[0].content));
+  book.setAuto('bot4', { aiReply: { enabled: true, persona: 'girlfriend', askWho: false } });
+  const G4 = '263774444444@s.whatsapp.net';
+  await askP([{ fromMe: false, text: 'hi' }], G4);
+  ok('questions switched off: romance cannot turn on', /NOT confirmed they are an adult/.test(lastBody.messages[0].content));
 
   srv.close();
   console.log(`\n${pass} passed, ${fail} failed`);
